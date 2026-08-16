@@ -11,6 +11,9 @@ permissions:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    env:
+      DJANGO_DEBUG: "false"
+      DJANGO_SECRET_KEY: ci-only-django-secret-key-not-for-production
     defaults:
       run:
         working-directory: backend
