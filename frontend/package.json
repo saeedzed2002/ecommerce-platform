@@ -9,14 +9,14 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@vitejs/plugin-react": "latest",
-    "react": "latest",
-    "react-dom": "latest",
-    "vite": "latest"
+    "@vitejs/plugin-react": "6.0.5",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "vite": "8.2.1"
   },
   "devDependencies": {
-    "@types/react": "latest",
-    "@types/react-dom": "latest",
-    "typescript": "latest"
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "typescript": "7.0.2"
   }
 }
