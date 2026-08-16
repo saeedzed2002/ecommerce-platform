@@ -77,7 +77,8 @@ class Product(TimeStampedModel):
 
 class ProductImage(TimeStampedModel):
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="images")
-    image_url = models.URLField()
+    image = models.ImageField(upload_to="products/%Y/%m/", blank=True)
+    image_url = models.URLField(blank=True)
     alt_text = models.CharField(max_length=180, blank=True)
     display_order = models.PositiveSmallIntegerField(default=0)
 

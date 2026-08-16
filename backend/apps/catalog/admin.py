@@ -6,6 +6,7 @@ from .models import Category, Product, ProductImage
 class ProductImageInline(admin.TabularInline):
     model = ProductImage
     extra = 0
+    fields = ("image", "alt_text", "display_order")
 
 
 @admin.register(Category)
