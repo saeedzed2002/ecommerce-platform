@@ -3,12 +3,18 @@ from pathlib import Path
 import environ
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
+PROJECT_ROOT = BASE_DIR.parent
 env = environ.Env(DJANGO_DEBUG=(bool, False))
-environ.Env.read_env(BASE_DIR / ".env")
+for env_file in (PROJECT_ROOT / ".env", BASE_DIR / ".env"):
+    if env_file.is_file():
+        environ.Env.read_env(env_file, overwrite=False)
 
 SECRET_KEY = env("DJANGO_SECRET_KEY", default="unsafe-development-key")
 DEBUG = env("DJANGO_DEBUG")
 ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=["localhost", "127.0.0.1"])
+
+if not DEBUG and SECRET_KEY == "unsafe-development-key":
+    raise RuntimeError("DJANGO_SECRET_KEY must be set when DJANGO_DEBUG is false")
 
 INSTALLED_APPS = [
     "django.contrib.admin", "django.contrib.auth", "django.contrib.contenttypes",

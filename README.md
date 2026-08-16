@@ -6,7 +6,7 @@ Production-oriented e-commerce platform with Django, React, PostgreSQL, Redis, R
 
 This repository is a monorepo:
 
-- `backend/`: Django 5.2.9, Django REST Framework, Channels, Celery, and domain apps.
+- `backend/`: Django 6.0.7, Django REST Framework, Channels, Celery, and domain apps.
 - `frontend/`: React, TypeScript, and Vite.
 - `compose.yaml`: local integration stack for PostgreSQL, Redis, RabbitMQ, Django, Celery, and React.
 - `docs/`: architecture and development documentation.

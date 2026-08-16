@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - Docker Desktop with Docker Compose v2
-- Python 3.13 and Node.js 22 only when running services outside Docker
+- Python 3.13 and Node.js 24 only when running services outside Docker
 
 ## First run
 
