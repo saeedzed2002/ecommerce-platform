@@ -49,9 +49,30 @@ class OrderListAPIView(ListAPIView):
     serializer_class = OrderSerializer
 
     def get_queryset(self):
-        return Order.objects.filter(user=self.request.user).prefetch_related(
-            "items", "status_events"
+        queryset = Order.objects.filter(user=self.request.user).prefetch_related(
+            "items", "status_events__changed_by"
         )
+        requested_status = self.request.query_params.get("status", "").strip()
+        if requested_status:
+            valid_statuses = {choice for choice, _ in Order.Status.choices}
+            if requested_status not in valid_statuses:
+                raise ValidationError({"status": "Invalid order status."})
+            queryset = queryset.filter(status=requested_status)
+        return queryset
+
+
+class CustomerOrderSummaryAPIView(APIView):
+    permission_classes = (IsAuthenticated,)
+
+    def get(self, request):
+        by_status = {status: 0 for status, _ in Order.Status.choices}
+        for item in (
+            Order.objects.filter(user=request.user)
+            .values("status")
+            .annotate(count=Count("id"))
+        ):
+            by_status[item["status"]] = item["count"]
+        return Response({"total": sum(by_status.values()), "by_status": by_status})
 
 
 class AdminOrderListAPIView(ListAPIView):
@@ -60,7 +81,7 @@ class AdminOrderListAPIView(ListAPIView):
 
     def get_queryset(self):
         queryset = Order.objects.select_related("user").prefetch_related(
-            "items", "status_events"
+            "items", "status_events__changed_by"
         )
         requested_status = self.request.query_params.get("status", "").strip()
         if requested_status:
@@ -96,6 +117,7 @@ class AdminOrderStatusAPIView(APIView):
         order = transition_order_status(
             order_number=order_number,
             target_status=serializer.validated_data["status"],
+            changed_by=request.user,
         )
         return Response(AdminOrderSerializer(order).data)
 

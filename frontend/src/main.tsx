@@ -32,6 +32,8 @@ type Product = {
   id: number;
   name: string;
   slug: string;
+  product_type: "laptop" | "mobile";
+  brand: string;
   short_description: string;
   price: string;
   compare_at_price: string | null;
@@ -43,6 +45,16 @@ type Product = {
 type ProductDetail = Product & {
   description: string;
   sku: string;
+  specifications: {
+    processor?: string;
+    ram_gb: number;
+    storage_gb: number;
+    display_size_inches?: string;
+    graphics?: string;
+    camera_megapixels?: number;
+    network?: "4g" | "5g";
+    battery_mah?: number;
+  } | null;
   images: { id: number; image_url: string | null; alt_text: string }[];
 };
 type CartItem = {
@@ -80,6 +92,7 @@ type OrderItem = {
 type OrderStatusEvent = {
   from_status: string;
   to_status: string;
+  changed_by_phone: string | null;
   created_at: string;
 };
 type Order = {
@@ -164,6 +177,16 @@ const apiBaseUrl = (
 ).replace(/\/$/, "");
 const categoryIcons = ["⌁", "◒", "⌂", "✦"];
 const categoryTones = ["blue", "peach", "mint", "lilac"];
+const specificationLabels: Record<string, string> = {
+  processor: "پردازنده",
+  ram_gb: "حافظه رم",
+  storage_gb: "حافظه داخلی",
+  display_size_inches: "اندازه نمایشگر",
+  graphics: "پردازنده گرافیکی",
+  camera_megapixels: "دوربین اصلی",
+  network: "شبکه",
+  battery_mah: "ظرفیت باتری",
+};
 
 function formatPrice(value: string) {
   return new Intl.NumberFormat("fa-IR").format(Number(value));
@@ -608,11 +631,13 @@ function ProductCard({ product }: { product: Product }) {
           ) : (
             <div className="image-fallback">{product.name.slice(0, 1)}</div>
           )}
-          <span className="product-badge">{product.category.name}</span>
+          <span className="product-badge">
+            {product.product_type === "laptop" ? "لپ‌تاپ" : "موبایل"}
+          </span>
         </div>
         <div className="product-content">
           <div className="product-meta">
-            <span>{product.category.name}</span>
+            <span>{product.brand || product.category.name}</span>
             <span className={product.in_stock ? "in-stock" : "out-of-stock"}>
               {product.in_stock ? "موجود" : "ناموجود"}
             </span>
@@ -631,13 +656,6 @@ function ProductCard({ product }: { product: Product }) {
           </div>
         </div>
       </AppLink>
-      <button
-        className="wish-button"
-        type="button"
-        aria-label={`افزودن ${product.name} به علاقه‌مندی‌ها`}
-      >
-        <Icon name="heart" size={18} />
-      </button>
     </article>
   );
 }
@@ -808,10 +826,59 @@ function CatalogPage({
   categories: Category[];
   category: string | null;
 }) {
+  const filters = new URLSearchParams(location.search);
+  const productType = filters.get("type") as Product["product_type"] | null;
+  const queryString = filters.toString();
   const catalog = useProducts(
-    category ? `?category=${encodeURIComponent(category)}` : "?ordering=newest",
+    queryString ? `?${queryString}` : "?ordering=newest",
   );
   const selected = categories.find((item) => item.slug === category);
+
+  function catalogPath(nextFilters: URLSearchParams) {
+    const nextQuery = nextFilters.toString();
+    return nextQuery ? `/products?${nextQuery}` : "/products";
+  }
+
+  function updateFilter(name: string, value: string | boolean) {
+    const nextFilters = new URLSearchParams(location.search);
+    if (!value) nextFilters.delete(name);
+    else nextFilters.set(name, String(value));
+    if (name === "type") {
+      ["ram_min", "storage_min", "processor", "network"].forEach((key) =>
+        nextFilters.delete(key),
+      );
+    }
+    navigate(catalogPath(nextFilters));
+  }
+
+  function categoryPath(slug: string | null) {
+    const nextFilters = new URLSearchParams(location.search);
+    if (slug) nextFilters.set("category", slug);
+    else nextFilters.delete("category");
+    return catalogPath(nextFilters);
+  }
+
+  function submitFilters(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const nextFilters = new URLSearchParams(location.search);
+    const data = new FormData(event.currentTarget);
+    [
+      "q",
+      "brand",
+      "min_price",
+      "max_price",
+      "ram_min",
+      "storage_min",
+      "processor",
+      "network",
+    ].forEach((name) => {
+      const value = String(data.get(name) ?? "").trim();
+      if (value) nextFilters.set(name, value);
+      else nextFilters.delete(name);
+    });
+    navigate(catalogPath(nextFilters));
+  }
+
   return (
     <main className="catalog-page">
       <div className="page-heading">
@@ -823,12 +890,15 @@ function CatalogPage({
         </p>
       </div>
       <nav className="category-filter" aria-label="فیلتر دسته‌بندی">
-        <AppLink href="/products" className={!category ? "active" : undefined}>
+        <AppLink
+          href={categoryPath(null)}
+          className={!category ? "active" : undefined}
+        >
           همه
         </AppLink>
         {categories.map((item) => (
           <AppLink
-            href={`/products?category=${encodeURIComponent(item.slug)}`}
+            href={categoryPath(item.slug)}
             className={item.slug === category ? "active" : undefined}
             key={item.id}
           >
@@ -836,7 +906,177 @@ function CatalogPage({
           </AppLink>
         ))}
       </nav>
-      <ProductGrid {...catalog} />
+      <div className="catalog-layout">
+        <aside className="catalog-filters" aria-label="فیلتر محصولات">
+          <div className="catalog-filters-heading">
+            <div>
+              <p className="eyebrow">جست‌وجو و فیلتر</p>
+              <h2>انتخاب دقیق‌تر</h2>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                navigate(
+                  category
+                    ? `/products?category=${encodeURIComponent(category)}`
+                    : "/products",
+                )
+              }
+            >
+              پاک‌سازی
+            </button>
+          </div>
+          <div
+            className="product-type-filter"
+            role="group"
+            aria-label="نوع کالا"
+          >
+            <button
+              className={!productType ? "active" : undefined}
+              type="button"
+              onClick={() => updateFilter("type", "")}
+            >
+              همه
+            </button>
+            <button
+              className={productType === "laptop" ? "active" : undefined}
+              type="button"
+              onClick={() => updateFilter("type", "laptop")}
+            >
+              لپ‌تاپ
+            </button>
+            <button
+              className={productType === "mobile" ? "active" : undefined}
+              type="button"
+              onClick={() => updateFilter("type", "mobile")}
+            >
+              موبایل
+            </button>
+          </div>
+          <form key={queryString} onSubmit={submitFilters}>
+            <label>
+              <span>جست‌وجو</span>
+              <input
+                name="q"
+                defaultValue={filters.get("q") ?? ""}
+                placeholder="نام، برند یا کد کالا"
+              />
+            </label>
+            <label>
+              <span>برند</span>
+              <input
+                name="brand"
+                defaultValue={filters.get("brand") ?? ""}
+                placeholder="مثلاً Apple"
+              />
+            </label>
+            <div className="price-filter-row">
+              <label>
+                <span>حداقل قیمت</span>
+                <input
+                  name="min_price"
+                  inputMode="numeric"
+                  defaultValue={filters.get("min_price") ?? ""}
+                />
+              </label>
+              <label>
+                <span>حداکثر قیمت</span>
+                <input
+                  name="max_price"
+                  inputMode="numeric"
+                  defaultValue={filters.get("max_price") ?? ""}
+                />
+              </label>
+            </div>
+            {productType && (
+              <>
+                <div className="price-filter-row">
+                  <label>
+                    <span>حداقل رم</span>
+                    <select
+                      name="ram_min"
+                      defaultValue={filters.get("ram_min") ?? ""}
+                    >
+                      <option value="">همه</option>
+                      <option value="8">۸ گیگابایت</option>
+                      <option value="12">۱۲ گیگابایت</option>
+                      <option value="16">۱۶ گیگابایت</option>
+                      <option value="32">۳۲ گیگابایت</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>حداقل حافظه</span>
+                    <select
+                      name="storage_min"
+                      defaultValue={filters.get("storage_min") ?? ""}
+                    >
+                      <option value="">همه</option>
+                      <option value="128">۱۲۸ گیگابایت</option>
+                      <option value="256">۲۵۶ گیگابایت</option>
+                      <option value="512">۵۱۲ گیگابایت</option>
+                      <option value="1024">۱ ترابایت</option>
+                    </select>
+                  </label>
+                </div>
+                {productType === "laptop" ? (
+                  <label>
+                    <span>پردازنده</span>
+                    <input
+                      name="processor"
+                      defaultValue={filters.get("processor") ?? ""}
+                      placeholder="مثلاً Core Ultra"
+                    />
+                  </label>
+                ) : (
+                  <label>
+                    <span>نسل شبکه</span>
+                    <select
+                      name="network"
+                      defaultValue={filters.get("network") ?? ""}
+                    >
+                      <option value="">همه</option>
+                      <option value="5g">۵G</option>
+                      <option value="4g">۴G</option>
+                    </select>
+                  </label>
+                )}
+              </>
+            )}
+            <label className="stock-filter">
+              <input
+                type="checkbox"
+                checked={filters.get("in_stock") === "true"}
+                onChange={(event) =>
+                  updateFilter("in_stock", event.target.checked)
+                }
+              />
+              <span>فقط کالاهای موجود</span>
+            </label>
+            <button className="catalog-filter-submit" type="submit">
+              اعمال فیلترها
+            </button>
+          </form>
+        </aside>
+        <section className="catalog-results">
+          <div className="catalog-results-heading">
+            <span>{catalog.products.length} کالا در این صفحه</span>
+            <label>
+              <span>مرتب‌سازی</span>
+              <select
+                value={filters.get("ordering") ?? "newest"}
+                onChange={(event) =>
+                  updateFilter("ordering", event.target.value)
+                }
+              >
+                <option value="newest">جدیدترین</option>
+                <option value="price">ارزان‌ترین</option>
+                <option value="-price">گران‌ترین</option>
+              </select>
+            </label>
+          </div>
+          <ProductGrid {...catalog} />
+        </section>
+      </div>
     </main>
   );
 }
@@ -1267,9 +1507,11 @@ function ProfilePage({
   onSignOut: () => void;
 }) {
   const [orders, setOrders] = useState<Order[]>([]);
+  const [summary, setSummary] = useState<OrderSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [page, setPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useState("");
   const [ordersResponse, setOrdersResponse] = useState<OrdersResponse | null>(
     null,
   );
@@ -1280,14 +1522,27 @@ function ProfilePage({
     }
     setLoading(true);
     setError("");
-    fetchAuthenticated(`/api/v1/orders/?page=${page}`)
-      .then(async (response) => {
-        if (!response.ok) throw new Error(await getError(response));
-        return response.json() as Promise<OrdersResponse>;
+    const params = new URLSearchParams({ page: String(page) });
+    if (statusFilter) params.set("status", statusFilter);
+    Promise.all([
+      fetchAuthenticated(`/api/v1/orders/?${params.toString()}`),
+      fetchAuthenticated("/api/v1/orders/summary/"),
+    ])
+      .then(async ([ordersApiResponse, summaryApiResponse]) => {
+        if (!ordersApiResponse.ok)
+          throw new Error(await getError(ordersApiResponse));
+        if (!summaryApiResponse.ok)
+          throw new Error(await getError(summaryApiResponse));
+        const [ordersData, summaryData] = await Promise.all([
+          ordersApiResponse.json() as Promise<OrdersResponse>,
+          summaryApiResponse.json() as Promise<OrderSummary>,
+        ]);
+        return [ordersData, summaryData] as const;
       })
-      .then((data) => {
-        setOrders(data.results);
-        setOrdersResponse(data);
+      .then(([ordersData, summaryData]) => {
+        setOrders(ordersData.results);
+        setOrdersResponse(ordersData);
+        setSummary(summaryData);
       })
       .catch((reason) =>
         setError(
@@ -1297,7 +1552,7 @@ function ProfilePage({
         ),
       )
       .finally(() => setLoading(false));
-  }, [page, user?.id]);
+  }, [page, statusFilter, user?.id]);
   if (!user)
     return (
       <PageState
@@ -1314,137 +1569,201 @@ function ProfilePage({
         <h1>{user.role === "admin" ? "پروفایل مدیر" : "پروفایل من"}</h1>
         <p>اطلاعات حساب و سفارش‌های ثبت‌شدهٔ خودت را اینجا ببین.</p>
       </div>
-      <section className="profile-summary">
-        <div className="profile-avatar">
-          <Icon name="user" size={29} />
-        </div>
-        <dl className="profile-details">
-          <div>
-            <dt>شمارهٔ موبایل</dt>
-            <dd dir="ltr">{user.phone}</dd>
+      <div className="profile-dashboard-layout">
+        <aside className="profile-sidebar">
+          <div className="profile-avatar">
+            <Icon name="user" size={29} />
           </div>
-          <div>
-            <dt>نوع حساب</dt>
-            <dd>{user.role === "admin" ? "مدیر" : "مشتری"}</dd>
-          </div>
-        </dl>
-        <button className="signout-button" type="button" onClick={onSignOut}>
-          خروج از حساب
-        </button>
-        {user.role === "admin" && (
-          <div className="profile-admin-actions">
-            <AppLink className="admin-dashboard-link" href="/admin">
-              نمای کلی مدیریت
+          <strong>{user.role === "admin" ? "حساب مدیر" : "حساب کاربری"}</strong>
+          <span dir="ltr">{user.phone}</span>
+          <nav className="profile-navigation" aria-label="بخش‌های پروفایل">
+            <button
+              className={!statusFilter ? "active" : undefined}
+              type="button"
+              onClick={() => {
+                setPage(1);
+                setStatusFilter("");
+              }}
+            >
+              همه سفارش‌ها
+            </button>
+            <button
+              className={statusFilter === "pending" ? "active" : undefined}
+              type="button"
+              onClick={() => {
+                setPage(1);
+                setStatusFilter("pending");
+              }}
+            >
+              در انتظار پرداخت
+            </button>
+            <button
+              className={statusFilter === "processing" ? "active" : undefined}
+              type="button"
+              onClick={() => {
+                setPage(1);
+                setStatusFilter("processing");
+              }}
+            >
+              در حال ارسال
+            </button>
+          </nav>
+          {user.role === "admin" ? (
+            <div className="profile-admin-actions">
+              <AppLink className="admin-dashboard-link" href="/admin">
+                نمای کلی مدیریت
+              </AppLink>
+              <AppLink className="admin-dashboard-link" href="/admin/orders">
+                مدیریت سفارش‌ها
+              </AppLink>
+              <AppLink className="admin-dashboard-link" href="/admin/chat">
+                گفت‌وگوهای پشتیبانی
+              </AppLink>
+            </div>
+          ) : (
+            <AppLink className="admin-dashboard-link" href="/chat">
+              گفت‌وگو با پشتیبانی
             </AppLink>
-            <AppLink className="admin-dashboard-link" href="/admin/orders">
-              مدیریت سفارش‌ها
-            </AppLink>
-            <AppLink className="admin-dashboard-link" href="/admin/chat">
-              گفت‌وگوهای پشتیبانی
-            </AppLink>
-          </div>
-        )}
-        {user.role === "customer" && (
-          <AppLink className="admin-dashboard-link" href="/chat">
-            گفت‌وگو با پشتیبانی
-          </AppLink>
-        )}
-      </section>
-      <section className="orders-section">
-        <div className="orders-heading">
-          <div>
-            <p className="eyebrow">پیگیری خرید</p>
-            <h2>سفارش‌های من</h2>
-          </div>
-          <span>{ordersResponse?.count ?? 0} سفارش</span>
-        </div>
-        {loading ? (
-          <p className="orders-state">در حال دریافت سفارش‌ها…</p>
-        ) : error ? (
-          <p className="orders-state error">{error}</p>
-        ) : !orders.length ? (
-          <p className="orders-state">هنوز سفارشی ثبت نکرده‌ای.</p>
-        ) : (
-          <div className="orders-list">
-            {orders.map((order) => (
-              <article className="order-card" key={order.number}>
-                <div className="order-card-header">
-                  <div>
-                    <span>کد سفارش</span>
-                    <strong dir="ltr">{order.number}</strong>
-                  </div>
-                  <span className={`order-status ${order.status}`}>
-                    {orderStatusLabels[order.status] ?? order.status}
-                  </span>
-                </div>
-                <dl className="order-meta">
-                  <div>
-                    <dt>زمان ثبت</dt>
-                    <dd>{formatDate(order.created_at)}</dd>
-                  </div>
-                  <div>
-                    <dt>مبلغ</dt>
-                    <dd>{formatPrice(order.subtotal)} تومان</dd>
-                  </div>
-                  {order.status === "pending" && order.expires_at && (
-                    <div>
-                      <dt>مهلت پرداخت</dt>
-                      <dd>{formatDate(order.expires_at)}</dd>
-                    </div>
-                  )}
-                </dl>
-                <ul className="order-items">
-                  {order.items.map((item) => (
-                    <li key={item.id}>
-                      <span>{item.product_name}</span>
-                      <span>
-                        {item.quantity} × {formatPrice(item.unit_price)} تومان
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-                {!!order.status_events.length && (
-                  <ol className="order-status-history">
-                    {order.status_events.map((event, index) => (
-                      <li key={`${event.created_at}-${index}`}>
-                        <span>
-                          {orderStatusLabels[event.to_status] ??
-                            event.to_status}
-                        </span>
-                        <time dateTime={event.created_at}>
-                          {formatDate(event.created_at)}
-                        </time>
-                      </li>
-                    ))}
-                  </ol>
-                )}
-              </article>
-            ))}
-          </div>
-        )}
-        {!loading &&
-          !error &&
-          ordersResponse &&
-          (ordersResponse.next || ordersResponse.previous) && (
-            <nav className="orders-pagination" aria-label="صفحه‌بندی سفارش‌ها">
-              <button
-                type="button"
-                disabled={!ordersResponse.next}
-                onClick={() => setPage((current) => current + 1)}
-              >
-                سفارش‌های قدیمی‌تر
-              </button>
-              <span>صفحه {page}</span>
-              <button
-                type="button"
-                disabled={!ordersResponse.previous}
-                onClick={() => setPage((current) => current - 1)}
-              >
-                سفارش‌های جدیدتر
-              </button>
-            </nav>
           )}
-      </section>
+          <button className="signout-button" type="button" onClick={onSignOut}>
+            خروج از حساب
+          </button>
+        </aside>
+        <div className="profile-dashboard-content">
+          <section
+            className="profile-overview-cards"
+            aria-label="خلاصه سفارش‌ها"
+          >
+            <div>
+              <span>کل سفارش‌ها</span>
+              <strong>{summary?.total ?? "—"}</strong>
+            </div>
+            <div>
+              <span>در انتظار پرداخت</span>
+              <strong>{summary?.by_status.pending ?? "—"}</strong>
+            </div>
+            <div>
+              <span>در حال ارسال</span>
+              <strong>{summary?.by_status.processing ?? "—"}</strong>
+            </div>
+            <div>
+              <span>ارسال‌شده</span>
+              <strong>{summary?.by_status.shipped ?? "—"}</strong>
+            </div>
+          </section>
+          <section className="orders-section">
+            <div className="orders-heading">
+              <div>
+                <p className="eyebrow">پیگیری خرید</p>
+                <h2>سفارش‌های من</h2>
+              </div>
+              <span>{ordersResponse?.count ?? 0} سفارش</span>
+            </div>
+            {loading ? (
+              <p className="orders-state">در حال دریافت سفارش‌ها…</p>
+            ) : error ? (
+              <p className="orders-state error">{error}</p>
+            ) : !orders.length ? (
+              <p className="orders-state">سفارشی با این وضعیت وجود ندارد.</p>
+            ) : (
+              <div className="orders-list">
+                {orders.map((order) => (
+                  <article
+                    className="order-card detailed-order-card"
+                    key={order.number}
+                  >
+                    <div className="order-card-header">
+                      <div>
+                        <span>کد سفارش</span>
+                        <strong dir="ltr">{order.number}</strong>
+                      </div>
+                      <span className={`order-status ${order.status}`}>
+                        {orderStatusLabels[order.status] ?? order.status}
+                      </span>
+                    </div>
+                    <dl className="order-meta">
+                      <div>
+                        <dt>زمان ثبت</dt>
+                        <dd>{formatDate(order.created_at)}</dd>
+                      </div>
+                      <div>
+                        <dt>مبلغ نهایی</dt>
+                        <dd>{formatPrice(order.subtotal)} تومان</dd>
+                      </div>
+                      <div>
+                        <dt>تعداد آیتم‌ها</dt>
+                        <dd>{order.items.length} کالا</dd>
+                      </div>
+                      {order.status === "pending" && order.expires_at && (
+                        <div>
+                          <dt>مهلت پرداخت</dt>
+                          <dd>{formatDate(order.expires_at)}</dd>
+                        </div>
+                      )}
+                    </dl>
+                    <ul className="order-line-items">
+                      {order.items.map((item) => (
+                        <li key={item.id}>
+                          <div>
+                            <strong>{item.product_name}</strong>
+                            <small dir="ltr">{item.product_sku}</small>
+                          </div>
+                          <span>{item.quantity} عدد</span>
+                          <span>{formatPrice(item.unit_price)} تومان</span>
+                          <strong>{formatPrice(item.line_total)} تومان</strong>
+                        </li>
+                      ))}
+                    </ul>
+                    {!!order.status_events.length && (
+                      <ol className="order-status-history">
+                        {order.status_events.map((event, index) => (
+                          <li key={`${event.created_at}-${index}`}>
+                            <span>
+                              {orderStatusLabels[event.to_status] ??
+                                event.to_status}
+                              {event.changed_by_phone
+                                ? ` — ${event.changed_by_phone}`
+                                : ""}
+                            </span>
+                            <time dateTime={event.created_at}>
+                              {formatDate(event.created_at)}
+                            </time>
+                          </li>
+                        ))}
+                      </ol>
+                    )}
+                  </article>
+                ))}
+              </div>
+            )}
+            {!loading &&
+              !error &&
+              ordersResponse &&
+              (ordersResponse.next || ordersResponse.previous) && (
+                <nav
+                  className="orders-pagination"
+                  aria-label="صفحه‌بندی سفارش‌ها"
+                >
+                  <button
+                    type="button"
+                    disabled={!ordersResponse.next}
+                    onClick={() => setPage((current) => current + 1)}
+                  >
+                    سفارش‌های قدیمی‌تر
+                  </button>
+                  <span>صفحه {page}</span>
+                  <button
+                    type="button"
+                    disabled={!ordersResponse.previous}
+                    onClick={() => setPage((current) => current - 1)}
+                  >
+                    سفارش‌های جدیدتر
+                  </button>
+                </nav>
+              )}
+          </section>
+        </div>
+      </div>
     </main>
   );
 }
@@ -2439,6 +2758,29 @@ function ProductPage({
               <dd>{product.category.name}</dd>
             </div>
           </dl>
+          {product.specifications && (
+            <dl className="product-specifications">
+              {Object.entries(product.specifications).map(([key, value]) => {
+                if (value === "" || value === undefined) return null;
+                const suffix =
+                  key === "ram_gb" || key === "storage_gb"
+                    ? " گیگابایت"
+                    : key === "camera_megapixels"
+                      ? " مگاپیکسل"
+                      : key === "battery_mah"
+                        ? " میلی‌آمپرساعت"
+                        : key === "display_size_inches"
+                          ? " اینچ"
+                          : "";
+                return (
+                  <div key={key}>
+                    <dt>{specificationLabels[key] ?? key}</dt>
+                    <dd>{`${value}${suffix}`}</dd>
+                  </div>
+                );
+              })}
+            </dl>
+          )}
           <div className="detail-notice">
             <Icon name="shield" size={19} />
             <span>ضمانت اصالت کالا و امکان بازگشت طبق شرایط فروشگاه</span>

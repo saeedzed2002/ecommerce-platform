@@ -6,6 +6,7 @@ from .views import (
     AdminOrderStatusAPIView,
     AdminOrderSummaryAPIView,
     CheckoutAPIView,
+    CustomerOrderSummaryAPIView,
     OrderListAPIView,
     StartPaymentAPIView,
     ZarinpalCallbackAPIView,
@@ -26,6 +27,7 @@ urlpatterns = [
         AdminOrderStatusAPIView.as_view(),
         name="admin-order-status",
     ),
+    path("summary/", CustomerOrderSummaryAPIView.as_view(), name="order-summary"),
     path("", OrderListAPIView.as_view(), name="order-list"),
     path("checkout/", CheckoutAPIView.as_view(), name="checkout"),
     path(

@@ -5,7 +5,7 @@ from rest_framework.test import APIClient
 
 from apps.accounts.models import User
 from apps.catalog.models import Category, Product
-from apps.orders.models import Order, OrderItem, PaymentAttempt
+from apps.orders.models import Order, OrderItem, OrderStatusEvent, PaymentAttempt
 
 
 @pytest.fixture
@@ -107,7 +107,7 @@ def test_admin_gets_an_order_summary(
 
 @pytest.mark.django_db
 def test_admin_can_move_paid_order_through_fulfilment(
-    admin_client: APIClient, paid_order: Order
+    admin_client: APIClient, admin: User, paid_order: Order
 ) -> None:
     processing = admin_client.patch(
         f"/api/v1/orders/admin/{paid_order.number}/status/",
@@ -122,6 +122,12 @@ def test_admin_can_move_paid_order_through_fulfilment(
     assert processing.data["status"] == Order.Status.PROCESSING
     assert shipped.status_code == 200
     assert shipped.data["status"] == Order.Status.SHIPPED
+    assert (
+        OrderStatusEvent.objects.get(
+            order=paid_order, to_status=Order.Status.PROCESSING
+        ).changed_by_id
+        == admin.id
+    )
 
 
 @pytest.mark.django_db

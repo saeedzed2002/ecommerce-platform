@@ -91,7 +91,7 @@ def create_order_from_cart(*, user, address_id: int) -> Order:
 
 
 @transaction.atomic
-def transition_order_status(*, order_number, target_status: str) -> Order:
+def transition_order_status(*, order_number, target_status: str, changed_by) -> Order:
     order = (
         Order.objects.select_for_update()
         .select_related("user")
@@ -138,6 +138,7 @@ def transition_order_status(*, order_number, target_status: str) -> Order:
         order=order,
         from_status=previous_status,
         to_status=target_status,
+        changed_by=changed_by,
     )
     return order
 

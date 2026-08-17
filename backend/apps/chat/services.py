@@ -34,7 +34,7 @@ def get_conversation_for_user(*, user, conversation_id) -> Conversation:
 @transaction.atomic
 def create_message(
     *, user, conversation_id, body: str, client_message_id=None
-) -> Message:
+) -> tuple[Message, bool]:
     queryset = Conversation.objects.select_for_update().select_related("customer")
     if not is_platform_admin(user):
         queryset = queryset.filter(customer=user)
@@ -48,7 +48,7 @@ def create_message(
         if existing is not None:
             if existing.sender_id != user.id:
                 raise PermissionDenied("Message identifier belongs to another user.")
-            return existing
+            return existing, False
     message = Message.objects.create(
         conversation=conversation,
         sender=user,
@@ -61,7 +61,7 @@ def create_message(
         conversation.status = Conversation.Status.OPEN
         update_fields.append("status")
     conversation.save(update_fields=update_fields)
-    return message
+    return message, True
 
 
 def message_payload(message: Message) -> dict:

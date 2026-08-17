@@ -47,9 +47,13 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
 
 class OrderStatusEventSerializer(serializers.ModelSerializer):
+    changed_by_phone = serializers.CharField(
+        source="changed_by.phone", read_only=True, default=None
+    )
+
     class Meta:
         model = OrderStatusEvent
-        fields = ("from_status", "to_status", "created_at")
+        fields = ("from_status", "to_status", "changed_by_phone", "created_at")
 
 
 class OrderSerializer(serializers.ModelSerializer):

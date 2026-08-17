@@ -213,3 +213,33 @@ def test_orders_are_visible_only_to_owner(
 
     assert len(client.get("/api/v1/orders/").data["results"]) == 1
     assert other_client.get("/api/v1/orders/").data["results"] == []
+
+
+@pytest.mark.django_db
+def test_customer_can_filter_and_summarize_own_orders(
+    client: APIClient, user: User, product: Product, address: Address
+) -> None:
+    cart = Cart.objects.create(user=user)
+    CartItem.objects.create(cart=cart, product=product)
+    client.post("/api/v1/orders/checkout/", {"address_id": address.id})
+    Order.objects.create(
+        user=user,
+        status=Order.Status.SHIPPED,
+        subtotal=Decimal(100000),
+        shipping_full_name="Test User",
+        shipping_phone=user.phone,
+        shipping_province="Tehran",
+        shipping_city="Tehran",
+        shipping_address_line="Street",
+        shipping_postal_code="1234567890",
+    )
+
+    filtered = client.get("/api/v1/orders/?status=shipped")
+    summary = client.get("/api/v1/orders/summary/")
+
+    assert filtered.status_code == 200
+    assert filtered.data["count"] == 1
+    assert summary.status_code == 200
+    assert summary.data["total"] == 2
+    assert summary.data["by_status"][Order.Status.PENDING] == 1
+    assert summary.data["by_status"][Order.Status.SHIPPED] == 1
