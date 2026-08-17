@@ -181,12 +181,54 @@ function AuthDialog({
   </div>;
 }
 
+function ProfileDialog({
+  user,
+  onClose,
+  onSignOut,
+}: {
+  user: AuthUser;
+  onClose: () => void;
+  onSignOut: () => void;
+}) {
+  const [profile, setProfile] = useState<AuthUser>(user);
+  const [isRefreshing, setIsRefreshing] = useState(true);
+
+  useEffect(() => {
+    const stored = sessionStorage.getItem("nexora-auth");
+    if (!stored) {
+      setIsRefreshing(false);
+      return;
+    }
+    const session = JSON.parse(stored) as AuthResponse;
+    fetch(`${apiBaseUrl}/api/v1/auth/me/`, {
+      headers: { Authorization: `Bearer ${session.access}` },
+    })
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((currentUser: AuthUser) => setProfile(currentUser))
+      .catch(() => undefined)
+      .finally(() => setIsRefreshing(false));
+  }, []);
+
+  return <div className="auth-backdrop" role="presentation" onMouseDown={onClose}>
+    <section className="profile-dialog" role="dialog" aria-modal="true" aria-labelledby="profile-title" onMouseDown={(event) => event.stopPropagation()}>
+      <button className="auth-close" type="button" onClick={onClose} aria-label="بستن پروفایل"><Icon name="close" size={19} /></button>
+      <div className="profile-avatar"><Icon name="user" size={29} /></div>
+      <p className="eyebrow">{profile.role === "admin" ? "حساب مدیریت" : "حساب کاربری"}</p>
+      <h2 id="profile-title">{profile.role === "admin" ? "مدیر نوکسا" : "پروفایل من"}</h2>
+      <p className="profile-description">{isRefreshing ? "در حال به‌روزرسانی اطلاعات…" : "خوش آمدی. اطلاعات ورود این نشست در این بخش نمایش داده می‌شود."}</p>
+      <dl className="profile-details"><div><dt>شمارهٔ موبایل</dt><dd dir="ltr">{profile.phone}</dd></div><div><dt>نوع حساب</dt><dd>{profile.role === "admin" ? "مدیر" : "مشتری"}</dd></div></dl>
+      <button className="signout-button" type="button" onClick={onSignOut}>خروج از حساب</button>
+    </section>
+  </div>;
+}
+
 function App() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [authUser, setAuthUser] = useState<AuthUser | null>(() => {
     try {
       const stored = sessionStorage.getItem("nexora-auth");
@@ -205,6 +247,7 @@ function App() {
   function signOut() {
     sessionStorage.removeItem("nexora-auth");
     setAuthUser(null);
+    setIsProfileOpen(false);
   }
 
   useEffect(() => {
@@ -244,7 +287,7 @@ function App() {
     <header className="site-header">
       <a className="brand" href="#home" aria-label="خانه نوکسا"><span className="brand-mark">n</span><span>نوکسا</span></a>
       <nav className="desktop-nav" aria-label="ناوبری اصلی"><a href="#products">فروشگاه</a><a href="#categories">دسته‌بندی‌ها</a><a href="#offers">پیشنهادها</a><a href="#about">درباره‌ی ما</a></nav>
-      <div className="header-actions"><button className="icon-button" aria-label="جست‌وجو"><Icon name="search" /></button><button className="icon-button" aria-label="علاقه‌مندی‌ها"><Icon name="heart" /></button><button className="cart-button" aria-label="سبد خرید"><Icon name="bag" /><span>۰</span></button>{authUser ? <button className="account-button signed-in" type="button" onClick={signOut}><Icon name="user" size={17} /><span>{authUser.role === "admin" ? "مدیر" : "حساب من"}</span><small>خروج</small></button> : <button className="account-button" type="button" onClick={() => setIsAuthOpen(true)}><Icon name="user" size={17} /><span>ورود | ثبت‌نام</span></button>}<button className="menu-button" aria-label="منو"><Icon name="menu" /></button></div>
+      <div className="header-actions"><button className="icon-button" aria-label="جست‌وجو"><Icon name="search" /></button><button className="icon-button" aria-label="علاقه‌مندی‌ها"><Icon name="heart" /></button><button className="cart-button" aria-label="سبد خرید"><Icon name="bag" /><span>۰</span></button>{authUser ? <button className="account-button signed-in" type="button" onClick={() => setIsProfileOpen(true)}><Icon name="user" size={17} /><span>{authUser.role === "admin" ? "مدیر" : "پروفایل"}</span></button> : <button className="account-button" type="button" onClick={() => setIsAuthOpen(true)}><Icon name="user" size={17} /><span>ورود | ثبت‌نام</span></button>}<button className="menu-button" aria-label="منو"><Icon name="menu" /></button></div>
     </header>
 
     <main id="home">
@@ -263,6 +306,7 @@ function App() {
     </main>
     <footer id="about"><a className="brand" href="#home"><span className="brand-mark">n</span><span>نوکسا</span></a><p>یک تجربه‌ی ساده‌تر برای انتخاب و خرید بهتر.</p><small>© ۱۴۰۵ نوکسا. تمامی حقوق محفوظ است.</small></footer>
     {isAuthOpen && <AuthDialog onClose={() => setIsAuthOpen(false)} onAuthenticated={handleAuthenticated} />}
+    {authUser && isProfileOpen && <ProfileDialog user={authUser} onClose={() => setIsProfileOpen(false)} onSignOut={signOut} />}
   </div>;
 }
 
