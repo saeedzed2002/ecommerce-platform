@@ -105,6 +105,16 @@ type AdminOrder = Order & {
 type AdminOrdersResponse = Omit<OrdersResponse, "results"> & {
   results: AdminOrder[];
 };
+type OrderSummary = {
+  total: number;
+  by_status: Record<string, number>;
+};
+type ConversationSummary = {
+  total: number;
+  by_status: Record<Conversation["status"], number>;
+  unassigned_open: number;
+  unread_customer_messages: number;
+};
 type Conversation = {
   id: string;
   customer_phone: string;
@@ -144,6 +154,7 @@ type Route =
   | { name: "checkout" }
   | { name: "payment-result" }
   | { name: "profile" }
+  | { name: "admin-dashboard" }
   | { name: "admin-orders" }
   | { name: "chat" }
   | { name: "admin-chat" }
@@ -166,6 +177,8 @@ function getRoute(): Route {
   if (parts[0] === "payment-result" && parts.length === 1)
     return { name: "payment-result" };
   if (parts[0] === "profile" && parts.length === 1) return { name: "profile" };
+  if (parts[0] === "admin" && parts.length === 1)
+    return { name: "admin-dashboard" };
   if (parts[0] === "admin" && parts[1] === "orders" && parts.length === 2)
     return { name: "admin-orders" };
   if (parts[0] === "chat" && parts.length === 1) return { name: "chat" };
@@ -1320,6 +1333,9 @@ function ProfilePage({
         </button>
         {user.role === "admin" && (
           <div className="profile-admin-actions">
+            <AppLink className="admin-dashboard-link" href="/admin">
+              نمای کلی مدیریت
+            </AppLink>
             <AppLink className="admin-dashboard-link" href="/admin/orders">
               مدیریت سفارش‌ها
             </AppLink>
@@ -1429,6 +1445,126 @@ function ProfilePage({
             </nav>
           )}
       </section>
+    </main>
+  );
+}
+
+function AdminDashboardPage({ user }: { user: AuthUser | null }) {
+  const [orders, setOrders] = useState<OrderSummary | null>(null);
+  const [conversations, setConversations] =
+    useState<ConversationSummary | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (user?.role !== "admin") return;
+    setError("");
+    Promise.all([
+      fetchAuthenticated("/api/v1/orders/admin/summary/"),
+      fetchAuthenticated("/api/v1/chat/conversations/summary/"),
+    ])
+      .then(async ([ordersResponse, conversationsResponse]) => {
+        if (!ordersResponse.ok) throw new Error(await getError(ordersResponse));
+        if (!conversationsResponse.ok)
+          throw new Error(await getError(conversationsResponse));
+        const [orderData, conversationData] = await Promise.all([
+          ordersResponse.json() as Promise<OrderSummary>,
+          conversationsResponse.json() as Promise<ConversationSummary>,
+        ]);
+        setOrders(orderData);
+        setConversations(conversationData);
+      })
+      .catch((reason) =>
+        setError(
+          reason instanceof Error
+            ? reason.message
+            : "دریافت نمای کلی مدیریت ناموفق بود.",
+        ),
+      );
+  }, [user?.id, user?.role]);
+
+  if (user?.role !== "admin")
+    return (
+      <PageState
+        title="دسترسی ندارید"
+        text="این صفحه فقط برای حساب‌های مدیر در دسترس است."
+      />
+    );
+
+  if (error) return <PageState title="نمای کلی در دسترس نیست" text={error} />;
+
+  return (
+    <main className="profile-page admin-dashboard-page">
+      <div className="page-heading">
+        <p className="eyebrow">مرکز عملیات</p>
+        <h1>نمای کلی مدیریت</h1>
+        <p>وضعیت سفارش‌ها و صف پشتیبانی را در یک نگاه پیگیری کن.</p>
+      </div>
+      {!orders || !conversations ? (
+        <p className="orders-state">در حال دریافت نمای کلی…</p>
+      ) : (
+        <div className="admin-overview-grid">
+          <section className="admin-overview-card">
+            <div className="admin-overview-heading">
+              <div>
+                <p className="eyebrow">فروش</p>
+                <h2>سفارش‌ها</h2>
+              </div>
+              <strong>{orders.total}</strong>
+            </div>
+            <dl className="admin-overview-metrics">
+              <div>
+                <dt>در انتظار پرداخت</dt>
+                <dd>{orders.by_status.pending ?? 0}</dd>
+              </div>
+              <div>
+                <dt>آمادهٔ رسیدگی</dt>
+                <dd>{orders.by_status.paid ?? 0}</dd>
+              </div>
+              <div>
+                <dt>در حال ارسال</dt>
+                <dd>{orders.by_status.processing ?? 0}</dd>
+              </div>
+              <div>
+                <dt>ارسال‌شده</dt>
+                <dd>{orders.by_status.shipped ?? 0}</dd>
+              </div>
+            </dl>
+            <AppLink className="admin-dashboard-link" href="/admin/orders">
+              مدیریت سفارش‌ها
+            </AppLink>
+          </section>
+          <section className="admin-overview-card">
+            <div className="admin-overview-heading">
+              <div>
+                <p className="eyebrow">پشتیبانی</p>
+                <h2>گفت‌وگوها</h2>
+              </div>
+              <strong>{conversations.total}</strong>
+            </div>
+            <dl className="admin-overview-metrics">
+              <div>
+                <dt>گفت‌وگوی باز</dt>
+                <dd>{conversations.by_status.open ?? 0}</dd>
+              </div>
+              <div>
+                <dt>بدون مسئول</dt>
+                <dd>{conversations.unassigned_open}</dd>
+              </div>
+              <div>
+                <dt>پیام خوانده‌نشده</dt>
+                <dd>{conversations.unread_customer_messages}</dd>
+              </div>
+              <div>
+                <dt>حل‌شده</dt>
+                <dd>{conversations.by_status.resolved ?? 0}</dd>
+              </div>
+            </dl>
+            <AppLink className="admin-dashboard-link" href="/admin/chat">
+              گفت‌وگوهای پشتیبانی
+            </AppLink>
+          </section>
+        </div>
+      )}
     </main>
   );
 }
@@ -2463,6 +2599,8 @@ function App() {
           navigate("/");
         }}
       />
+    ) : route.name === "admin-dashboard" ? (
+      <AdminDashboardPage user={user} />
     ) : route.name === "admin-orders" ? (
       <AdminOrdersPage user={user} />
     ) : route.name === "chat" ? (

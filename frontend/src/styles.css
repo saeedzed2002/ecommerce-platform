@@ -1166,6 +1166,62 @@ footer small {
   display: grid;
   gap: 8px;
 }
+.admin-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+.admin-overview-card {
+  padding: 24px;
+  border: 1px solid #dfe6dc;
+  border-radius: 17px;
+  background: #fff;
+  box-shadow: 0 12px 28px #2744310a;
+}
+.admin-overview-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding-bottom: 17px;
+  border-bottom: 1px solid #edf0ea;
+}
+.admin-overview-heading h2 {
+  margin: 3px 0 0;
+  color: #1b2a20;
+  font-size: 1.2rem;
+}
+.admin-overview-heading strong {
+  min-width: 46px;
+  min-height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  color: #315f47;
+  background: #edf5eb;
+  font-size: 1.1rem;
+}
+.admin-overview-metrics {
+  margin: 18px 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.admin-overview-metrics div {
+  padding: 11px;
+  border-radius: 10px;
+  background: #f8faf7;
+}
+.admin-overview-metrics dt {
+  color: #78857a;
+  font-size: 0.66rem;
+}
+.admin-overview-metrics dd {
+  margin: 5px 0 0;
+  color: #2b523c;
+  font-size: 0.95rem;
+  font-weight: 800;
+}
 @media (max-width: 860px) {
   .account-button {
     order: -1;
@@ -2043,6 +2099,9 @@ footer small {
     width: 100%;
   }
   .admin-orders-filters {
+    grid-template-columns: 1fr;
+  }
+  .admin-overview-grid {
     grid-template-columns: 1fr;
   }
   .admin-chat-layout {

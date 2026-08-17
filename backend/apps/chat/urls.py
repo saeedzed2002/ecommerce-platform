@@ -3,6 +3,7 @@ from django.urls import path
 from .views import (
     AdminConversationListAPIView,
     AdminConversationManageAPIView,
+    AdminConversationSummaryAPIView,
     CustomerConversationAPIView,
     MessageListCreateAPIView,
 )
@@ -15,6 +16,11 @@ urlpatterns = [
         "conversations/",
         AdminConversationListAPIView.as_view(),
         name="conversation-list",
+    ),
+    path(
+        "conversations/summary/",
+        AdminConversationSummaryAPIView.as_view(),
+        name="conversation-summary",
     ),
     path(
         "conversations/<uuid:conversation_id>/",
