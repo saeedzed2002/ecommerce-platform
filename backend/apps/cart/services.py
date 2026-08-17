@@ -1,8 +1,10 @@
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.utils import timezone
 from rest_framework.exceptions import NotFound, ValidationError
 
 from apps.catalog.models import Product
+from apps.orders.models import Order
 
 from .models import Cart, CartItem
 
@@ -12,9 +14,21 @@ def get_cart_for_user(*, user) -> Cart:
     return cart
 
 
+def ensure_cart_is_not_reserved(*, user) -> None:
+    if Order.objects.filter(
+        user=user,
+        status=Order.Status.PENDING,
+        expires_at__gt=timezone.now(),
+    ).exists():
+        raise ValidationError(
+            {"detail": "Complete or wait for the pending payment before editing cart."}
+        )
+
+
 @transaction.atomic
 def add_item(*, user, product_id: int, quantity: int) -> Cart:
     get_user_model().objects.select_for_update().get(pk=user.pk)
+    ensure_cart_is_not_reserved(user=user)
     product = (
         Product.objects.select_for_update()
         .select_related("category")
@@ -46,6 +60,7 @@ def add_item(*, user, product_id: int, quantity: int) -> Cart:
 @transaction.atomic
 def update_item(*, user, item_id: int, quantity: int) -> Cart:
     get_user_model().objects.select_for_update().get(pk=user.pk)
+    ensure_cart_is_not_reserved(user=user)
     item = (
         CartItem.objects.select_for_update()
         .select_related("product", "cart")
@@ -59,3 +74,20 @@ def update_item(*, user, item_id: int, quantity: int) -> Cart:
     item.quantity = quantity
     item.save(update_fields=["quantity", "updated_at"])
     return item.cart
+
+
+@transaction.atomic
+def remove_item(*, user, item_id: int) -> Cart:
+    get_user_model().objects.select_for_update().get(pk=user.pk)
+    ensure_cart_is_not_reserved(user=user)
+    item = (
+        CartItem.objects.select_for_update()
+        .select_related("cart")
+        .filter(pk=item_id, cart__user=user)
+        .first()
+    )
+    if item is None:
+        raise NotFound("Cart item not found.")
+    cart = item.cart
+    item.delete()
+    return cart

@@ -923,11 +923,9 @@ function CartPage({
 function CheckoutPage({
   user,
   cart,
-  onOrderCreated,
 }: {
   user: AuthUser | null;
   cart: Cart | null;
-  onOrderCreated: () => void;
 }) {
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [selected, setSelected] = useState<number | null>(null);
@@ -998,7 +996,6 @@ function CheckoutPage({
       });
       if (!response.ok) throw new Error(await getError(response));
       order = (await response.json()) as Order;
-      onOrderCreated();
       setPaymentOrder(order);
       await startPayment(order);
     } catch (reason) {
@@ -1459,17 +1456,7 @@ function App() {
         removeItem={(itemId) => mutateCart(`items/${itemId}/`, "DELETE")}
       />
     ) : route.name === "checkout" ? (
-      <CheckoutPage
-        user={user}
-        cart={cart}
-        onOrderCreated={() => {
-          setCart((current) =>
-            current
-              ? { ...current, items: [], item_count: 0, subtotal: "0" }
-              : null,
-          );
-        }}
-      />
+      <CheckoutPage user={user} cart={cart} />
     ) : route.name === "payment-result" ? (
       <PaymentResultPage />
     ) : (

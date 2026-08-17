@@ -8,6 +8,8 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import NotFound, ValidationError
 
+from apps.cart.models import CartItem
+
 from .models import Order, PaymentAttempt
 
 
@@ -184,6 +186,7 @@ def verify_zarinpal_payment(*, authority: str) -> PaymentVerification:
             .get(pk=attempt.pk)
         )
         order = Order.objects.select_for_update().get(pk=attempt.order_id)
+        get_user_model().objects.select_for_update().get(pk=order.user_id)
         if order.status == Order.Status.PAID:
             return PaymentVerification(
                 order=order, paid=True, reference_id=attempt.reference_id
@@ -195,6 +198,9 @@ def verify_zarinpal_payment(*, authority: str) -> PaymentVerification:
             return PaymentVerification(order=order, paid=False, reference_id="")
         order.status = Order.Status.PAID
         order.save(update_fields=["status", "updated_at"])
+        CartItem.objects.select_for_update().filter(
+            cart__user_id=order.user_id
+        ).delete()
         attempt.status = PaymentAttempt.Status.VERIFIED
         attempt.reference_id = verification.reference_id
         attempt.failure_reason = ""

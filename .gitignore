@@ -21,4 +21,5 @@ frontend/.npm-cache/
 .idea/
 .vscode/
 *.log
+backend/celerybeat-schedule*
 .DS_Store

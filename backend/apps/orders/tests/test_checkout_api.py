@@ -49,7 +49,7 @@ def address(user: User) -> Address:
 
 
 @pytest.mark.django_db
-def test_checkout_creates_price_snapshot_reduces_stock_and_clears_cart(
+def test_checkout_creates_price_snapshot_reduces_stock_and_keeps_cart_until_payment(
     client: APIClient, user: User, product: Product, address: Address
 ) -> None:
     cart = Cart.objects.create(user=user)
@@ -60,7 +60,25 @@ def test_checkout_creates_price_snapshot_reduces_stock_and_clears_cart(
     assert response.status_code == 201
     assert response.data["subtotal"] == "500000"
     assert response.data["items"][0]["product_name"] == "Product"
-    assert CartItem.objects.count() == 0
+    assert CartItem.objects.count() == 1
+    product.refresh_from_db()
+    assert product.stock_quantity == 2
+
+
+@pytest.mark.django_db
+def test_checkout_reuses_pending_order_without_reserving_stock_twice(
+    client: APIClient, user: User, product: Product, address: Address
+) -> None:
+    cart = Cart.objects.create(user=user)
+    CartItem.objects.create(cart=cart, product=product, quantity=2)
+
+    first = client.post("/api/v1/orders/checkout/", {"address_id": address.id})
+    second = client.post("/api/v1/orders/checkout/", {"address_id": address.id})
+
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert first.data["number"] == second.data["number"]
+    assert Order.objects.count() == 1
     product.refresh_from_db()
     assert product.stock_quantity == 2
 

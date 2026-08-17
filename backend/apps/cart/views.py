@@ -12,7 +12,7 @@ from .serializers import (
     CartSerializer,
     UpdateCartItemSerializer,
 )
-from .services import add_item, get_cart_for_user, update_item
+from .services import add_item, get_cart_for_user, remove_item, update_item
 
 
 def cart_queryset():
@@ -70,6 +70,5 @@ class CartItemDetailAPIView(UpdateAPIView, DestroyAPIView):
         return Response(serialize_cart_for_user(request.user))
 
     def delete(self, request, *args, **kwargs):
-        item = self.get_object()
-        item.delete()
+        remove_item(user=request.user, item_id=self.kwargs["pk"])
         return Response(serialize_cart_for_user(request.user))

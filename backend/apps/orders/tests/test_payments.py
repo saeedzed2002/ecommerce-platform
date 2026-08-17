@@ -8,6 +8,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.accounts.models import User
+from apps.cart.models import Cart, CartItem
 from apps.catalog.models import Category, Product
 from apps.orders.models import Order, OrderItem, PaymentAttempt
 from apps.orders.payments import ZarinpalVerification
@@ -42,6 +43,8 @@ def product() -> Product:
 
 @pytest.fixture
 def order(user: User, product: Product) -> Order:
+    cart = Cart.objects.create(user=user)
+    CartItem.objects.create(cart=cart, product=product, quantity=2)
     order = Order.objects.create(
         user=user,
         subtotal=Decimal(500000),
@@ -117,6 +120,7 @@ def test_zarinpal_callback_verifies_payment_and_redirects(
     attempt = PaymentAttempt.objects.get(order=order)
     assert attempt.status == PaymentAttempt.Status.VERIFIED
     assert attempt.reference_id == "123456"
+    assert CartItem.objects.filter(cart__user=order.user).count() == 0
     verify_payment.assert_called_once()
 
 

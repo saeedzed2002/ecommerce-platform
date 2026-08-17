@@ -1,11 +1,14 @@
+from datetime import timedelta
 from decimal import Decimal
 
 import pytest
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.accounts.models import User
 from apps.cart.models import CartItem
 from apps.catalog.models import Category, Product
+from apps.orders.models import Order
 
 
 @pytest.fixture
@@ -111,3 +114,25 @@ def test_cart_requires_authentication(product: Product) -> None:
     response = APIClient().post("/api/v1/cart/items/", {"product_id": product.id})
 
     assert response.status_code == 401
+
+
+@pytest.mark.django_db
+def test_cart_cannot_change_while_payment_is_pending(
+    client: APIClient, user: User, product: Product
+) -> None:
+    Order.objects.create(
+        user=user,
+        subtotal=Decimal(250000),
+        expires_at=timezone.now() + timedelta(minutes=15),
+        shipping_full_name="Test User",
+        shipping_phone="989121234567",
+        shipping_province="Tehran",
+        shipping_city="Tehran",
+        shipping_address_line="Street",
+        shipping_postal_code="1234567890",
+    )
+
+    response = client.post("/api/v1/cart/items/", {"product_id": product.id})
+
+    assert response.status_code == 400
+    assert CartItem.objects.count() == 0

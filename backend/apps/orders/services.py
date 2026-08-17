@@ -16,6 +16,18 @@ from .models import Address, Order, OrderItem
 @transaction.atomic
 def create_order_from_cart(*, user, address_id: int) -> Order:
     get_user_model().objects.select_for_update().get(pk=user.pk)
+    pending_order = (
+        Order.objects.select_for_update()
+        .filter(
+            user=user,
+            status=Order.Status.PENDING,
+            expires_at__gt=timezone.now(),
+        )
+        .order_by("-created_at")
+        .first()
+    )
+    if pending_order is not None:
+        return pending_order
     address = Address.objects.filter(pk=address_id, user=user).first()
     if address is None:
         raise ValidationError({"address_id": "Address not found."})
@@ -74,5 +86,4 @@ def create_order_from_cart(*, user, address_id: int) -> Order:
     for product, quantity in order_items:
         product.stock_quantity -= quantity
         product.save(update_fields=["stock_quantity", "updated_at"])
-    CartItem.objects.filter(pk__in=[item.pk for item in cart_items]).delete()
     return order
