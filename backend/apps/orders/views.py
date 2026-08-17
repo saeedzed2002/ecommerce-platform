@@ -1,8 +1,9 @@
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.db.models import Q
 from django.http import HttpResponseRedirect
 from rest_framework import status
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.generics import ListAPIView, ListCreateAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -14,8 +15,15 @@ from .payments import (
     start_zarinpal_payment,
     verify_zarinpal_payment,
 )
-from .serializers import AddressSerializer, CheckoutSerializer, OrderSerializer
-from .services import create_order_from_cart
+from .permissions import IsPlatformAdmin
+from .serializers import (
+    AddressSerializer,
+    AdminOrderSerializer,
+    CheckoutSerializer,
+    OrderSerializer,
+    OrderStatusUpdateSerializer,
+)
+from .services import create_order_from_cart, transition_order_status
 
 
 class AddressListCreateAPIView(ListCreateAPIView):
@@ -42,6 +50,40 @@ class OrderListAPIView(ListAPIView):
 
     def get_queryset(self):
         return Order.objects.filter(user=self.request.user).prefetch_related("items")
+
+
+class AdminOrderListAPIView(ListAPIView):
+    permission_classes = (IsPlatformAdmin,)
+    serializer_class = AdminOrderSerializer
+
+    def get_queryset(self):
+        queryset = Order.objects.select_related("user").prefetch_related("items")
+        requested_status = self.request.query_params.get("status", "").strip()
+        if requested_status:
+            valid_statuses = {choice for choice, _ in Order.Status.choices}
+            if requested_status not in valid_statuses:
+                raise ValidationError({"status": "Invalid order status."})
+            queryset = queryset.filter(status=requested_status)
+
+        query = self.request.query_params.get("query", "").strip()
+        if query:
+            queryset = queryset.filter(
+                Q(number__icontains=query) | Q(user__phone__icontains=query)
+            )
+        return queryset
+
+
+class AdminOrderStatusAPIView(APIView):
+    permission_classes = (IsPlatformAdmin,)
+
+    def patch(self, request, order_number):
+        serializer = OrderStatusUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        order = transition_order_status(
+            order_number=order_number,
+            target_status=serializer.validated_data["status"],
+        )
+        return Response(AdminOrderSerializer(order).data)
 
 
 class CheckoutAPIView(APIView):

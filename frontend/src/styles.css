@@ -1148,6 +1148,20 @@ footer small {
 .signout-button:hover {
   background: #fcefeb;
 }
+.admin-dashboard-link {
+  min-width: 150px;
+  padding: 12px 15px;
+  border-radius: 11px;
+  color: #315f47;
+  background: #edf5eb;
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.admin-dashboard-link:hover {
+  color: #fff;
+  background: #315f47;
+}
 @media (max-width: 860px) {
   .account-button {
     order: -1;
@@ -1583,6 +1597,62 @@ footer small {
   color: #728075;
   font-size: 0.7rem;
 }
+.admin-orders-filters {
+  margin-bottom: 24px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 180px auto;
+  gap: 10px;
+}
+.admin-orders-filters input,
+.admin-orders-filters select,
+.admin-orders-filters button {
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid #d9e0d6;
+  border-radius: 10px;
+  color: #344338;
+  background: #fff;
+  font:
+    0.73rem Vazirmatn,
+    Tahoma,
+    sans-serif;
+}
+.admin-orders-filters input:focus,
+.admin-orders-filters select:focus {
+  outline: 0;
+  border-color: #537b60;
+  box-shadow: 0 0 0 3px #4c7b5518;
+}
+.admin-orders-filters button,
+.admin-order-footer button {
+  border: 0;
+  color: #fff;
+  background: #315f47;
+  cursor: pointer;
+  font-weight: 700;
+}
+.admin-order-footer {
+  margin-top: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #748076;
+  font-size: 0.7rem;
+}
+.admin-order-footer button {
+  min-height: 37px;
+  padding: 0 12px;
+  border-radius: 9px;
+  font:
+    700 0.7rem Vazirmatn,
+    Tahoma,
+    sans-serif;
+}
+.admin-order-footer button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
 .checkout-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 330px;
@@ -1680,6 +1750,9 @@ footer small {
   .profile-summary {
     align-items: flex-start;
     flex-wrap: wrap;
+  }
+  .admin-orders-filters {
+    grid-template-columns: 1fr;
   }
   .profile-summary .signout-button {
     width: 100%;

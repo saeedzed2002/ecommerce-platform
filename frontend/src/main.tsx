@@ -90,6 +90,14 @@ type OrdersResponse = {
   previous: string | null;
   results: Order[];
 };
+type AdminOrder = Order & {
+  customer_phone: string;
+  shipping_full_name: string;
+  shipping_city: string;
+};
+type AdminOrdersResponse = Omit<OrdersResponse, "results"> & {
+  results: AdminOrder[];
+};
 type Route =
   | { name: "home" }
   | { name: "catalog"; category: string | null }
@@ -98,6 +106,7 @@ type Route =
   | { name: "checkout" }
   | { name: "payment-result" }
   | { name: "profile" }
+  | { name: "admin-orders" }
   | { name: "not-found" };
 const apiBaseUrl = (
   import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000"
@@ -117,6 +126,8 @@ function getRoute(): Route {
   if (parts[0] === "payment-result" && parts.length === 1)
     return { name: "payment-result" };
   if (parts[0] === "profile" && parts.length === 1) return { name: "profile" };
+  if (parts[0] === "admin" && parts[1] === "orders" && parts.length === 2)
+    return { name: "admin-orders" };
   if (parts[0] !== "products") return { name: "not-found" };
   if (parts.length === 1)
     return {
@@ -1251,6 +1262,11 @@ function ProfilePage({
         <button className="signout-button" type="button" onClick={onSignOut}>
           خروج از حساب
         </button>
+        {user.role === "admin" && (
+          <AppLink className="admin-dashboard-link" href="/admin/orders">
+            مدیریت سفارش‌ها
+          </AppLink>
+        )}
       </section>
       <section className="orders-section">
         <div className="orders-heading">
@@ -1307,6 +1323,226 @@ function ProfilePage({
                 </ul>
               </article>
             ))}
+          </div>
+        )}
+        {!loading &&
+          !error &&
+          ordersResponse &&
+          (ordersResponse.next || ordersResponse.previous) && (
+            <nav className="orders-pagination" aria-label="صفحه‌بندی سفارش‌ها">
+              <button
+                type="button"
+                disabled={!ordersResponse.next}
+                onClick={() => setPage((current) => current + 1)}
+              >
+                سفارش‌های قدیمی‌تر
+              </button>
+              <span>صفحه {page}</span>
+              <button
+                type="button"
+                disabled={!ordersResponse.previous}
+                onClick={() => setPage((current) => current - 1)}
+              >
+                سفارش‌های جدیدتر
+              </button>
+            </nav>
+          )}
+      </section>
+    </main>
+  );
+}
+
+function AdminOrdersPage({ user }: { user: AuthUser | null }) {
+  const [orders, setOrders] = useState<AdminOrder[]>([]);
+  const [ordersResponse, setOrdersResponse] =
+    useState<AdminOrdersResponse | null>(null);
+  const [statusFilter, setStatusFilter] = useState("");
+  const [queryInput, setQueryInput] = useState("");
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [updating, setUpdating] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (user?.role !== "admin") {
+      setLoading(false);
+      return;
+    }
+    const params = new URLSearchParams({ page: String(page) });
+    if (statusFilter) params.set("status", statusFilter);
+    if (query) params.set("query", query);
+    setLoading(true);
+    setError("");
+    fetchAuthenticated(`/api/v1/orders/admin/?${params.toString()}`)
+      .then(async (response) => {
+        if (!response.ok) throw new Error(await getError(response));
+        return response.json() as Promise<AdminOrdersResponse>;
+      })
+      .then((data) => {
+        setOrders(data.results);
+        setOrdersResponse(data);
+      })
+      .catch((reason) =>
+        setError(
+          reason instanceof Error
+            ? reason.message
+            : "دریافت سفارش‌ها ناموفق بود.",
+        ),
+      )
+      .finally(() => setLoading(false));
+  }, [page, query, statusFilter, user?.id, user?.role]);
+
+  async function updateStatus(order: AdminOrder, nextStatus: string) {
+    setUpdating(order.number);
+    setError("");
+    try {
+      const response = await fetchAuthenticated(
+        `/api/v1/orders/admin/${order.number}/status/`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: nextStatus }),
+        },
+      );
+      if (!response.ok) throw new Error(await getError(response));
+      const updated = (await response.json()) as AdminOrder;
+      setOrders((current) =>
+        current.map((item) =>
+          item.number === updated.number ? updated : item,
+        ),
+      );
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : "تغییر وضعیت ناموفق بود.",
+      );
+    } finally {
+      setUpdating(null);
+    }
+  }
+
+  if (user?.role !== "admin")
+    return (
+      <PageState
+        title="دسترسی ندارید"
+        text="این بخش فقط برای حساب‌های مدیر در دسترس است."
+      />
+    );
+
+  return (
+    <main className="profile-page admin-orders-page">
+      <div className="page-heading">
+        <p className="eyebrow">مدیریت فروش</p>
+        <h1>سفارش‌ها</h1>
+        <p>
+          سفارش‌های پرداخت‌شده را بررسی کن و فقط در مسیر ارسال آن‌ها را جلو ببر.
+        </p>
+      </div>
+      <section className="orders-section">
+        <form
+          className="admin-orders-filters"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setPage(1);
+            setQuery(queryInput.trim());
+          }}
+        >
+          <input
+            aria-label="جست‌وجوی سفارش"
+            placeholder="کد سفارش یا شمارهٔ مشتری"
+            value={queryInput}
+            onChange={(event) => setQueryInput(event.target.value)}
+          />
+          <select
+            aria-label="وضعیت سفارش"
+            value={statusFilter}
+            onChange={(event) => {
+              setPage(1);
+              setStatusFilter(event.target.value);
+            }}
+          >
+            <option value="">همهٔ وضعیت‌ها</option>
+            {Object.entries(orderStatusLabels).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+          <button type="submit">جست‌وجو</button>
+        </form>
+        <div className="orders-heading">
+          <div>
+            <p className="eyebrow">صف سفارش</p>
+            <h2>مدیریت چرخهٔ ارسال</h2>
+          </div>
+          <span>{ordersResponse?.count ?? 0} سفارش</span>
+        </div>
+        {loading ? (
+          <p className="orders-state">در حال دریافت سفارش‌ها…</p>
+        ) : error ? (
+          <p className="orders-state error">{error}</p>
+        ) : !orders.length ? (
+          <p className="orders-state">سفارشی با این فیلتر پیدا نشد.</p>
+        ) : (
+          <div className="orders-list">
+            {orders.map((order) => {
+              const nextStatus =
+                order.status === "paid"
+                  ? "processing"
+                  : order.status === "processing"
+                    ? "shipped"
+                    : null;
+              return (
+                <article
+                  className="order-card admin-order-card"
+                  key={order.number}
+                >
+                  <div className="order-card-header">
+                    <div>
+                      <span>کد سفارش</span>
+                      <strong dir="ltr">{order.number}</strong>
+                    </div>
+                    <span className={`order-status ${order.status}`}>
+                      {orderStatusLabels[order.status] ?? order.status}
+                    </span>
+                  </div>
+                  <dl className="order-meta">
+                    <div>
+                      <dt>مشتری</dt>
+                      <dd>{order.shipping_full_name}</dd>
+                    </div>
+                    <div>
+                      <dt>شمارهٔ تماس</dt>
+                      <dd dir="ltr">{order.customer_phone}</dd>
+                    </div>
+                    <div>
+                      <dt>شهر مقصد</dt>
+                      <dd>{order.shipping_city}</dd>
+                    </div>
+                    <div>
+                      <dt>مبلغ</dt>
+                      <dd>{formatPrice(order.subtotal)} تومان</dd>
+                    </div>
+                  </dl>
+                  <div className="admin-order-footer">
+                    <span>{order.items.length} قلم کالا</span>
+                    {nextStatus && (
+                      <button
+                        type="button"
+                        disabled={updating === order.number}
+                        onClick={() => void updateStatus(order, nextStatus)}
+                      >
+                        {updating === order.number
+                          ? "در حال ثبت…"
+                          : nextStatus === "processing"
+                            ? "شروع پردازش"
+                            : "ثبت ارسال سفارش"}
+                      </button>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
           </div>
         )}
         {!loading &&
@@ -1613,6 +1849,8 @@ function App() {
           navigate("/");
         }}
       />
+    ) : route.name === "admin-orders" ? (
+      <AdminOrdersPage user={user} />
     ) : (
       <PageState title="صفحه پیدا نشد" text="نشانی واردشده معتبر نیست." />
     );

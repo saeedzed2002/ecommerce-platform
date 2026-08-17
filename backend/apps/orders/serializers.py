@@ -62,5 +62,25 @@ class OrderSerializer(serializers.ModelSerializer):
         )
 
 
+class AdminOrderSerializer(OrderSerializer):
+    customer_phone = serializers.CharField(source="user.phone", read_only=True)
+
+    class Meta(OrderSerializer.Meta):
+        fields = OrderSerializer.Meta.fields + (
+            "customer_phone",
+            "shipping_full_name",
+            "shipping_city",
+        )
+
+
+class OrderStatusUpdateSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(
+        choices=(
+            Order.Status.PROCESSING,
+            Order.Status.SHIPPED,
+        )
+    )
+
+
 class CheckoutSerializer(serializers.Serializer):
     address_id = serializers.IntegerField(min_value=1)

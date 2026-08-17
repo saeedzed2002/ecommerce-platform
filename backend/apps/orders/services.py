@@ -87,3 +87,29 @@ def create_order_from_cart(*, user, address_id: int) -> Order:
         product.stock_quantity -= quantity
         product.save(update_fields=["stock_quantity", "updated_at"])
     return order
+
+
+@transaction.atomic
+def transition_order_status(*, order_number, target_status: str) -> Order:
+    order = (
+        Order.objects.select_for_update()
+        .select_related("user")
+        .prefetch_related("items")
+        .filter(number=order_number)
+        .first()
+    )
+    if order is None:
+        raise ValidationError({"detail": "Order not found."})
+
+    allowed_transitions = {
+        Order.Status.PAID: Order.Status.PROCESSING,
+        Order.Status.PROCESSING: Order.Status.SHIPPED,
+    }
+    if allowed_transitions.get(order.status) != target_status:
+        raise ValidationError(
+            {"status": f"Cannot change {order.status} to {target_status}."}
+        )
+
+    order.status = target_status
+    order.save(update_fields=["status", "updated_at"])
+    return order
