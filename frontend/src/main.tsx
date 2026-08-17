@@ -103,7 +103,7 @@ function getRoute(): Route {
 function navigate(path: string) {
   history.pushState({}, "", path);
   dispatchEvent(new PopStateEvent("popstate"));
-  scrollTo({ top: 0, behavior: "instant" });
+  scrollTo({ top: 0, behavior: "auto" });
 }
 
 function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
