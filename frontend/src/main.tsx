@@ -44,12 +44,25 @@ type ProductDetail = Product & {
   sku: string;
   images: { id: number; image_url: string | null; alt_text: string }[];
 };
+type CartItem = {
+  id: number;
+  product: Product;
+  quantity: number;
+  line_total: string;
+};
+type Cart = {
+  id: number;
+  items: CartItem[];
+  item_count: number;
+  subtotal: string;
+};
 type AuthUser = { id: number; phone: string; role: "customer" | "admin" };
 type AuthResponse = { access: string; refresh: string; user: AuthUser };
 type Route =
   | { name: "home" }
   | { name: "catalog"; category: string | null }
   | { name: "product"; slug: string }
+  | { name: "cart" }
   | { name: "not-found" };
 const apiBaseUrl = (
   import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000"
@@ -63,6 +76,7 @@ function formatPrice(value: string) {
 function getRoute(): Route {
   const parts = location.pathname.split("/").filter(Boolean);
   if (!parts.length) return { name: "home" };
+  if (parts[0] === "cart" && parts.length === 1) return { name: "cart" };
   if (parts[0] !== "products") return { name: "not-found" };
   if (parts.length === 1)
     return {
@@ -175,6 +189,14 @@ function getError(response: Response) {
     .json()
     .then((body: { detail?: string }) => body.detail ?? "عملیات انجام نشد.")
     .catch(() => "ارتباط با سرور برقرار نشد.");
+}
+function getAccessToken() {
+  try {
+    const raw = sessionStorage.getItem("nexora-auth");
+    return raw ? (JSON.parse(raw) as AuthResponse).access : null;
+  } catch {
+    return null;
+  }
 }
 
 function AuthDialog({
@@ -385,10 +407,12 @@ function Header({
   user,
   signIn,
   profile,
+  cartCount,
 }: {
   user: AuthUser | null;
   signIn: () => void;
   profile: () => void;
+  cartCount: number;
 }) {
   return (
     <>
@@ -414,9 +438,13 @@ function Header({
           <button className="icon-button" aria-label="علاقه‌مندی‌ها">
             <Icon name="heart" />
           </button>
-          <button className="cart-button" aria-label="سبد خرید">
+          <button
+            className="cart-button"
+            aria-label="سبد خرید"
+            onClick={() => navigate("/cart")}
+          >
             <Icon name="bag" />
-            <span>۰</span>
+            <span>{formatPrice(String(cartCount))}</span>
           </button>
           {user ? (
             <button
@@ -687,10 +715,142 @@ function CatalogPage({
     </main>
   );
 }
-function ProductPage({ slug }: { slug: string }) {
+function CartPage({
+  user,
+  cart,
+  updateItem,
+  removeItem,
+}: {
+  user: AuthUser | null;
+  cart: Cart | null;
+  updateItem: (itemId: number, quantity: number) => Promise<void>;
+  removeItem: (itemId: number) => Promise<void>;
+}) {
+  if (!user) {
+    return (
+      <PageState
+        title="سبد خرید شما خالی است"
+        text="برای نگهداری سبد خرید، ابتدا وارد حساب کاربری شو."
+      />
+    );
+  }
+  if (!cart) {
+    return (
+      <main className="page-state">
+        <span className="detail-loader" />
+        <p>در حال دریافت سبد خرید…</p>
+      </main>
+    );
+  }
+  if (!cart.items.length) {
+    return (
+      <main className="page-state">
+        <h1>سبد خرید خالی است</h1>
+        <p>هنوز محصولی به سبد خرید اضافه نکرده‌ای.</p>
+        <AppLink className="button button-primary" href="/products">
+          مشاهده محصولات
+        </AppLink>
+      </main>
+    );
+  }
+  return (
+    <main className="cart-page">
+      <div className="page-heading">
+        <p className="eyebrow">سبد خرید</p>
+        <h1>انتخاب‌های شما</h1>
+        <p>{formatPrice(String(cart.item_count))} کالا در سبد خرید داری.</p>
+      </div>
+      <section className="cart-layout">
+        <div className="cart-items">
+          {cart.items.map((item) => (
+            <article className="cart-item" key={item.id}>
+              <AppLink
+                href={`/products/${encodeURIComponent(item.product.slug)}`}
+                className="cart-image"
+              >
+                {item.product.primary_image ? (
+                  <img
+                    src={item.product.primary_image}
+                    alt={item.product.name}
+                  />
+                ) : (
+                  <div className="image-fallback">
+                    {item.product.name.slice(0, 1)}
+                  </div>
+                )}
+              </AppLink>
+              <div className="cart-item-content">
+                <p>{item.product.category.name}</p>
+                <h2>{item.product.name}</h2>
+                <strong>
+                  {formatPrice(item.line_total)} <small>تومان</small>
+                </strong>
+                <div className="quantity-controls">
+                  <button
+                    type="button"
+                    aria-label="کم کردن تعداد"
+                    disabled={item.quantity === 1}
+                    onClick={() => updateItem(item.id, item.quantity - 1)}
+                  >
+                    −
+                  </button>
+                  <span>{formatPrice(String(item.quantity))}</span>
+                  <button
+                    type="button"
+                    aria-label="زیاد کردن تعداد"
+                    onClick={() => updateItem(item.id, item.quantity + 1)}
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+              <button
+                className="remove-cart-item"
+                type="button"
+                onClick={() => removeItem(item.id)}
+              >
+                حذف
+              </button>
+            </article>
+          ))}
+        </div>
+        <aside className="cart-summary">
+          <h2>خلاصه خرید</h2>
+          <div>
+            <span>جمع کالاها</span>
+            <strong>{formatPrice(cart.subtotal)} تومان</strong>
+          </div>
+          <div>
+            <span>هزینه ارسال</span>
+            <strong>در مرحله بعد</strong>
+          </div>
+          <hr />
+          <div className="cart-total">
+            <span>مبلغ قابل پرداخت</span>
+            <strong>{formatPrice(cart.subtotal)} تومان</strong>
+          </div>
+          <button className="checkout-button" type="button">
+            ادامه ثبت سفارش
+          </button>
+          <p>ثبت سفارش و پرداخت در مرحلهٔ بعدی پیاده‌سازی می‌شود.</p>
+        </aside>
+      </section>
+    </main>
+  );
+}
+
+function ProductPage({
+  slug,
+  addToCart,
+}: {
+  slug: string;
+  addToCart: (productId: number) => Promise<void>;
+}) {
   const [product, setProduct] = useState<ProductDetail | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [error, setError] = useState(false);
+  const [cartMessage, setCartMessage] = useState("");
+  const [adding, setAdding] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
     setProduct(null);
@@ -816,6 +976,35 @@ function ProductPage({ slug }: { slug: string }) {
             <Icon name="shield" size={19} />
             <span>ضمانت اصالت کالا و امکان بازگشت طبق شرایط فروشگاه</span>
           </div>
+          <button
+            className="add-to-cart-button"
+            type="button"
+            disabled={!product.in_stock || adding}
+            onClick={async () => {
+              setAdding(true);
+              setCartMessage("");
+              try {
+                await addToCart(product.id);
+                setCartMessage("محصول به سبد خرید اضافه شد.");
+              } catch (reason) {
+                setCartMessage(
+                  reason instanceof Error
+                    ? reason.message
+                    : "افزودن به سبد ناموفق بود.",
+                );
+              } finally {
+                setAdding(false);
+              }
+            }}
+          >
+            {adding
+              ? "در حال افزودن…"
+              : product.in_stock
+                ? "افزودن به سبد خرید"
+                : "ناموجود"}
+            <Icon name="bag" size={18} />
+          </button>
+          {cartMessage && <p className="cart-message">{cartMessage}</p>}
         </div>
       </section>
     </main>
@@ -838,6 +1027,7 @@ function App() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [authOpen, setAuthOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [cart, setCart] = useState<Cart | null>(null);
   const [user, setUser] = useState<AuthUser | null>(() => {
     try {
       const raw = sessionStorage.getItem("nexora-auth");
@@ -861,13 +1051,61 @@ function App() {
       .catch(() => undefined);
     return () => controller.abort();
   }, []);
+  async function loadCart() {
+    const access = getAccessToken();
+    if (!access) {
+      setCart(null);
+      return;
+    }
+    const response = await fetch(`${apiBaseUrl}/api/v1/cart/`, {
+      headers: { Authorization: `Bearer ${access}` },
+    });
+    if (!response.ok) throw new Error(await getError(response));
+    setCart((await response.json()) as Cart);
+  }
+  useEffect(() => {
+    void loadCart().catch(() => setCart(null));
+  }, [user]);
+  async function mutateCart(
+    path: string,
+    method: "POST" | "PATCH" | "DELETE",
+    body?: object,
+  ) {
+    const access = getAccessToken();
+    if (!access)
+      throw new Error("برای افزودن به سبد خرید ابتدا وارد حساب کاربری شو.");
+    const response = await fetch(`${apiBaseUrl}/api/v1/cart/${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${access}`,
+        "Content-Type": "application/json",
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (!response.ok) throw new Error(await getError(response));
+    setCart((await response.json()) as Cart);
+  }
   const page =
     route.name === "home" ? (
       <HomePage categories={categories} />
     ) : route.name === "catalog" ? (
       <CatalogPage categories={categories} category={route.category} />
     ) : route.name === "product" ? (
-      <ProductPage slug={route.slug} />
+      <ProductPage
+        slug={route.slug}
+        addToCart={(productId) =>
+          mutateCart("items/", "POST", { product_id: productId })
+        }
+      />
+    ) : route.name === "cart" ? (
+      <CartPage
+        user={user}
+        cart={cart}
+        updateItem={(itemId, quantity) =>
+          mutateCart(`items/${itemId}/`, "PATCH", { quantity })
+        }
+        removeItem={(itemId) => mutateCart(`items/${itemId}/`, "DELETE")}
+      />
     ) : (
       <PageState title="صفحه پیدا نشد" text="نشانی واردشده معتبر نیست." />
     );
@@ -877,6 +1115,7 @@ function App() {
         user={user}
         signIn={() => setAuthOpen(true)}
         profile={() => setProfileOpen(true)}
+        cartCount={cart?.item_count ?? 0}
       />
       {page}
       <footer id="about">
@@ -894,6 +1133,7 @@ function App() {
             sessionStorage.setItem("nexora-auth", JSON.stringify(response));
             setUser(response.user);
             setAuthOpen(false);
+            void loadCart();
           }}
         />
       )}
@@ -904,6 +1144,7 @@ function App() {
           onSignOut={() => {
             sessionStorage.removeItem("nexora-auth");
             setUser(null);
+            setCart(null);
             setProfileOpen(false);
           }}
         />
