@@ -19,6 +19,11 @@ CACHES = {
         "LOCATION": "otp-tests",
     }
 }
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",
+    }
+}
 
 STORAGES = deepcopy(STORAGES)
 STORAGES["default"]["OPTIONS"].update(

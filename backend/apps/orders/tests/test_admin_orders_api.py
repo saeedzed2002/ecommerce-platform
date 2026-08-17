@@ -5,7 +5,7 @@ from rest_framework.test import APIClient
 
 from apps.accounts.models import User
 from apps.catalog.models import Category, Product
-from apps.orders.models import Order, OrderItem
+from apps.orders.models import Order, OrderItem, PaymentAttempt
 
 
 @pytest.fixture
@@ -113,14 +113,90 @@ def test_admin_can_move_paid_order_through_fulfilment(
 
 
 @pytest.mark.django_db
-def test_admin_cannot_skip_or_reverse_order_lifecycle(
+def test_admin_cannot_cancel_a_paid_order_without_a_refund_workflow(
     admin_client: APIClient, paid_order: Order
 ) -> None:
     response = admin_client.patch(
         f"/api/v1/orders/admin/{paid_order.number}/status/",
-        {"status": "shipped"},
+        {"status": "cancelled"},
     )
 
     assert response.status_code == 400
     paid_order.refresh_from_db()
     assert paid_order.status == Order.Status.PAID
+
+
+@pytest.mark.django_db
+def test_admin_can_cancel_pending_order_and_restore_reserved_stock(
+    admin_client: APIClient, customer: User
+) -> None:
+    category = Category.objects.create(name="Catalog", slug="catalog")
+    product = Product.objects.create(
+        category=category,
+        name="Product",
+        slug="product",
+        sku="SKU-PRODUCT",
+        price=Decimal(250000),
+        stock_quantity=1,
+        status=Product.Status.PUBLISHED,
+    )
+    order = Order.objects.create(
+        user=customer,
+        subtotal=Decimal(250000),
+        shipping_full_name="Test User",
+        shipping_phone=customer.phone,
+        shipping_province="Tehran",
+        shipping_city="Tehran",
+        shipping_address_line="Street",
+        shipping_postal_code="1234567890",
+    )
+    OrderItem.objects.create(
+        order=order,
+        product=product,
+        product_name=product.name,
+        product_sku=product.sku,
+        unit_price=product.price,
+        quantity=1,
+    )
+    attempt = PaymentAttempt.objects.create(
+        order=order,
+        provider=PaymentAttempt.Provider.ZARINPAL,
+        status=PaymentAttempt.Status.REQUESTED,
+        amount=250000,
+        authority="S0000000000000000000000000000",
+    )
+
+    response = admin_client.patch(
+        f"/api/v1/orders/admin/{order.number}/status/",
+        {"status": "cancelled"},
+    )
+
+    assert response.status_code == 200
+    assert response.data["status"] == Order.Status.CANCELLED
+    product.refresh_from_db()
+    attempt.refresh_from_db()
+    assert product.stock_quantity == 2
+    assert attempt.status == PaymentAttempt.Status.FAILED
+
+
+@pytest.mark.django_db
+def test_admin_cannot_manually_mark_pending_order_as_paid(
+    admin_client: APIClient, customer: User
+) -> None:
+    order = Order.objects.create(
+        user=customer,
+        subtotal=Decimal(250000),
+        shipping_full_name="Test User",
+        shipping_phone=customer.phone,
+        shipping_province="Tehran",
+        shipping_city="Tehran",
+        shipping_address_line="Street",
+        shipping_postal_code="1234567890",
+    )
+
+    response = admin_client.patch(
+        f"/api/v1/orders/admin/{order.number}/status/",
+        {"status": "paid"},
+    )
+
+    assert response.status_code == 400

@@ -68,7 +68,7 @@ services:
     build:
       context: ./backend
       target: development
-    command: python manage.py runserver 0.0.0.0:8000
+    command: uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --reload
     env_file: .env
     volumes: [./backend:/app]
     ports: ["8000:8000"]

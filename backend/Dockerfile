@@ -7,7 +7,7 @@ RUN pip install --upgrade pip && pip install -r requirements/base.txt
 COPY . .
 FROM base AS development
 RUN pip install -r requirements/dev.txt
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+CMD ["uvicorn", "config.asgi:application", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 FROM base AS production
 RUN pip install gunicorn==26.0.0
 CMD ["gunicorn", "config.asgi:application", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000"]

@@ -32,6 +32,7 @@ INSTALLED_APPS = [
     "apps.catalog",
     "apps.cart",
     "apps.orders",
+    "apps.chat",
 ]
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",

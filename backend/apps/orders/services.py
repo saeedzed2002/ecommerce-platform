@@ -10,7 +10,7 @@ from rest_framework.exceptions import ValidationError
 from apps.cart.models import CartItem
 from apps.catalog.models import Product
 
-from .models import Address, Order, OrderItem
+from .models import Address, Order, OrderItem, PaymentAttempt
 
 
 @transaction.atomic
@@ -102,14 +102,50 @@ def transition_order_status(*, order_number, target_status: str) -> Order:
         raise ValidationError({"detail": "Order not found."})
 
     allowed_transitions = {
-        Order.Status.PAID: Order.Status.PROCESSING,
-        Order.Status.PROCESSING: Order.Status.SHIPPED,
+        Order.Status.PENDING: {
+            Order.Status.CANCELLED,
+        },
+        Order.Status.PAID: {
+            Order.Status.PROCESSING,
+            Order.Status.SHIPPED,
+        },
+        Order.Status.PROCESSING: {
+            Order.Status.SHIPPED,
+        },
     }
-    if allowed_transitions.get(order.status) != target_status:
+    if target_status not in allowed_transitions.get(order.status, set()):
         raise ValidationError(
             {"status": f"Cannot change {order.status} to {target_status}."}
         )
 
+    if order.status == Order.Status.PENDING:
+        _restore_order_stock(order)
+        PaymentAttempt.objects.filter(
+            order=order,
+            status__in=(
+                PaymentAttempt.Status.CREATED,
+                PaymentAttempt.Status.REQUESTED,
+            ),
+        ).update(
+            status=PaymentAttempt.Status.FAILED,
+            failure_reason="Cancelled by administrator.",
+        )
     order.status = target_status
     order.save(update_fields=["status", "updated_at"])
     return order
+
+
+def _restore_order_stock(order: Order) -> None:
+    items = list(order.items.select_for_update().order_by("product_id"))
+    products = {
+        product.pk: product
+        for product in Product.objects.select_for_update()
+        .filter(pk__in=[item.product_id for item in items if item.product_id])
+        .order_by("pk")
+    }
+    for item in items:
+        product = products.get(item.product_id)
+        if product is None:
+            continue
+        product.stock_quantity += item.quantity
+        product.save(update_fields=["stock_quantity", "updated_at"])

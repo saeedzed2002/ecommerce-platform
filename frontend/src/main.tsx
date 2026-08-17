@@ -3,6 +3,7 @@ import {
   type FormEvent,
   type ReactNode,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import { createRoot } from "react-dom/client";
@@ -98,6 +99,31 @@ type AdminOrder = Order & {
 type AdminOrdersResponse = Omit<OrdersResponse, "results"> & {
   results: AdminOrder[];
 };
+type Conversation = {
+  id: string;
+  customer_phone: string;
+  last_message_at: string | null;
+  created_at: string;
+};
+type ChatMessage = {
+  id: number;
+  body: string;
+  sender_role: "customer" | "admin";
+  created_at: string;
+  read_at: string | null;
+};
+type ChatMessagesResponse = {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: ChatMessage[];
+};
+type ConversationsResponse = {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: Conversation[];
+};
 type Route =
   | { name: "home" }
   | { name: "catalog"; category: string | null }
@@ -107,6 +133,8 @@ type Route =
   | { name: "payment-result" }
   | { name: "profile" }
   | { name: "admin-orders" }
+  | { name: "chat" }
+  | { name: "admin-chat" }
   | { name: "not-found" };
 const apiBaseUrl = (
   import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000"
@@ -128,6 +156,9 @@ function getRoute(): Route {
   if (parts[0] === "profile" && parts.length === 1) return { name: "profile" };
   if (parts[0] === "admin" && parts[1] === "orders" && parts.length === 2)
     return { name: "admin-orders" };
+  if (parts[0] === "chat" && parts.length === 1) return { name: "chat" };
+  if (parts[0] === "admin" && parts[1] === "chat" && parts.length === 2)
+    return { name: "admin-chat" };
   if (parts[0] !== "products") return { name: "not-found" };
   if (parts.length === 1)
     return {
@@ -289,6 +320,13 @@ function refreshAccessToken(): Promise<AuthResponse | null> {
     refreshPromise = null;
   });
   return refreshPromise;
+}
+function chatSocketUrl(conversationId: string) {
+  const url = new URL(apiBaseUrl);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  url.pathname = `/ws/chat/${conversationId}/`;
+  url.search = "";
+  return url.toString();
 }
 async function fetchAuthenticated(path: string, init: RequestInit = {}) {
   const auth = getStoredAuth();
@@ -1182,6 +1220,11 @@ const orderStatusLabels: Record<string, string> = {
   expired: "منقضی‌شده",
   cancelled: "لغوشده",
 };
+const adminStatusTargets: Record<string, string[]> = {
+  pending: ["cancelled"],
+  paid: ["processing", "shipped"],
+  processing: ["shipped"],
+};
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("fa-IR", {
@@ -1263,8 +1306,18 @@ function ProfilePage({
           خروج از حساب
         </button>
         {user.role === "admin" && (
-          <AppLink className="admin-dashboard-link" href="/admin/orders">
-            مدیریت سفارش‌ها
+          <div className="profile-admin-actions">
+            <AppLink className="admin-dashboard-link" href="/admin/orders">
+              مدیریت سفارش‌ها
+            </AppLink>
+            <AppLink className="admin-dashboard-link" href="/admin/chat">
+              گفت‌وگوهای پشتیبانی
+            </AppLink>
+          </div>
+        )}
+        {user.role === "customer" && (
+          <AppLink className="admin-dashboard-link" href="/chat">
+            گفت‌وگو با پشتیبانی
           </AppLink>
         )}
       </section>
@@ -1486,12 +1539,7 @@ function AdminOrdersPage({ user }: { user: AuthUser | null }) {
         ) : (
           <div className="orders-list">
             {orders.map((order) => {
-              const nextStatus =
-                order.status === "paid"
-                  ? "processing"
-                  : order.status === "processing"
-                    ? "shipped"
-                    : null;
+              const allowedTargets = adminStatusTargets[order.status] ?? [];
               return (
                 <article
                   className="order-card admin-order-card"
@@ -1526,19 +1574,28 @@ function AdminOrdersPage({ user }: { user: AuthUser | null }) {
                   </dl>
                   <div className="admin-order-footer">
                     <span>{order.items.length} قلم کالا</span>
-                    {nextStatus && (
-                      <button
-                        type="button"
-                        disabled={updating === order.number}
-                        onClick={() => void updateStatus(order, nextStatus)}
+                    <label className="admin-status-control">
+                      <span>تغییر وضعیت</span>
+                      <select
+                        value={order.status}
+                        disabled={
+                          !allowedTargets.length || updating === order.number
+                        }
+                        onChange={(event) => {
+                          if (event.target.value !== order.status)
+                            void updateStatus(order, event.target.value);
+                        }}
                       >
-                        {updating === order.number
-                          ? "در حال ثبت…"
-                          : nextStatus === "processing"
-                            ? "شروع پردازش"
-                            : "ثبت ارسال سفارش"}
-                      </button>
-                    )}
+                        <option value={order.status}>
+                          {orderStatusLabels[order.status] ?? order.status}
+                        </option>
+                        {allowedTargets.map((target) => (
+                          <option key={target} value={target}>
+                            {orderStatusLabels[target] ?? target}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                   </div>
                 </article>
               );
@@ -1568,6 +1625,345 @@ function AdminOrdersPage({ user }: { user: AuthUser | null }) {
             </nav>
           )}
       </section>
+    </main>
+  );
+}
+
+function ChatThread({
+  conversation,
+  user,
+}: {
+  conversation: Conversation;
+  user: AuthUser;
+}) {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [body, setBody] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [pending, setPending] = useState(false);
+  const [connected, setConnected] = useState(false);
+  const [error, setError] = useState("");
+  const socketRef = useRef<WebSocket | null>(null);
+
+  function appendMessage(message: ChatMessage) {
+    setMessages((current) =>
+      current.some((item) => item.id === message.id)
+        ? current
+        : [...current, message],
+    );
+  }
+
+  useEffect(() => {
+    setLoading(true);
+    setError("");
+    setMessages([]);
+    fetchAuthenticated(
+      `/api/v1/chat/conversations/${conversation.id}/messages/`,
+    )
+      .then(async (response) => {
+        if (!response.ok) throw new Error(await getError(response));
+        return response.json() as Promise<ChatMessagesResponse>;
+      })
+      .then((data) => setMessages(data.results))
+      .catch((reason) =>
+        setError(
+          reason instanceof Error
+            ? reason.message
+            : "دریافت پیام‌ها ناموفق بود.",
+        ),
+      )
+      .finally(() => setLoading(false));
+  }, [conversation.id]);
+
+  useEffect(() => {
+    const accessToken = getAccessToken();
+    if (!accessToken) return;
+    let socket: WebSocket;
+    try {
+      socket = new WebSocket(chatSocketUrl(conversation.id), [
+        "access_token",
+        accessToken,
+      ]);
+    } catch {
+      setConnected(false);
+      return;
+    }
+    socketRef.current = socket;
+    socket.onopen = () => setConnected(true);
+    socket.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data) as {
+          type: string;
+          message?: ChatMessage;
+          detail?: string;
+        };
+        if (payload.type === "message" && payload.message)
+          appendMessage(payload.message);
+        if (payload.type === "error")
+          setError(payload.detail ?? "ارسال پیام ناموفق بود.");
+      } catch {
+        setError("پاسخ نامعتبر از سرویس گفت‌وگو دریافت شد.");
+      }
+    };
+    socket.onclose = () => setConnected(false);
+    socket.onerror = () => setConnected(false);
+    return () => {
+      socket.close();
+      if (socketRef.current === socket) socketRef.current = null;
+    };
+  }, [conversation.id]);
+
+  async function sendMessage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const text = body.trim();
+    if (!text || pending) return;
+    setPending(true);
+    setError("");
+    setBody("");
+    const socket = socketRef.current;
+    if (socket?.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ body: text }));
+      setPending(false);
+      return;
+    }
+    try {
+      const response = await fetchAuthenticated(
+        `/api/v1/chat/conversations/${conversation.id}/messages/`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ body: text }),
+        },
+      );
+      if (!response.ok) throw new Error(await getError(response));
+      appendMessage((await response.json()) as ChatMessage);
+    } catch (reason) {
+      setBody(text);
+      setError(
+        reason instanceof Error ? reason.message : "ارسال پیام ناموفق بود.",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <section className="chat-thread">
+      <div className="chat-thread-header">
+        <div>
+          <p className="eyebrow">
+            {user.role === "admin" ? "گفت‌وگوی مشتری" : "پشتیبانی آنلاین"}
+          </p>
+          <h2>
+            {user.role === "admin"
+              ? conversation.customer_phone
+              : "گفت‌وگو با پشتیبانی"}
+          </h2>
+        </div>
+        <span
+          className={connected ? "chat-connection online" : "chat-connection"}
+        >
+          {connected ? "متصل" : "اتصال در حال بازیابی"}
+        </span>
+      </div>
+      <div className="chat-messages" aria-live="polite">
+        {loading ? (
+          <p className="orders-state">در حال دریافت پیام‌ها…</p>
+        ) : !messages.length ? (
+          <p className="orders-state">اولین پیام را ارسال کن.</p>
+        ) : (
+          messages.map((message) => (
+            <article
+              className={
+                message.sender_role === user.role
+                  ? "chat-message own"
+                  : "chat-message"
+              }
+              key={message.id}
+            >
+              <p>{message.body}</p>
+              <time dateTime={message.created_at}>
+                {formatDate(message.created_at)}
+              </time>
+            </article>
+          ))
+        )}
+      </div>
+      <form className="chat-composer" onSubmit={sendMessage}>
+        <input
+          aria-label="متن پیام"
+          placeholder="پیام خود را بنویس…"
+          value={body}
+          onChange={(event) => setBody(event.target.value)}
+          maxLength={2000}
+        />
+        <button type="submit" disabled={pending || !body.trim()}>
+          {pending ? "در حال ارسال…" : "ارسال پیام"}
+        </button>
+      </form>
+      {error && <p className="orders-state error">{error}</p>}
+    </section>
+  );
+}
+
+function ChatPage({ user }: { user: AuthUser | null }) {
+  const [conversation, setConversation] = useState<Conversation | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    if (user?.role !== "customer") return;
+    fetchAuthenticated("/api/v1/chat/conversation/")
+      .then(async (response) => {
+        if (!response.ok) throw new Error(await getError(response));
+        return response.json() as Promise<Conversation>;
+      })
+      .then(setConversation)
+      .catch((reason) =>
+        setError(
+          reason instanceof Error ? reason.message : "شروع گفت‌وگو ناموفق بود.",
+        ),
+      );
+  }, [user?.id, user?.role]);
+  if (user?.role !== "customer")
+    return (
+      <PageState
+        title="دسترسی ندارید"
+        text="این صفحه برای حساب‌های مشتری است."
+      />
+    );
+  return (
+    <main className="profile-page chat-page">
+      <div className="page-heading">
+        <p className="eyebrow">پشتیبانی</p>
+        <h1>گفت‌وگو با پشتیبانی</h1>
+        <p>پیام‌های شما ذخیره می‌شوند و مدیران فروشگاه پاسخ می‌دهند.</p>
+      </div>
+      {conversation ? (
+        <ChatThread conversation={conversation} user={user} />
+      ) : error ? (
+        <p className="orders-state error">{error}</p>
+      ) : (
+        <p className="orders-state">در حال آماده‌سازی گفت‌وگو…</p>
+      )}
+    </main>
+  );
+}
+
+function CustomerChatWidget({
+  user,
+  onClose,
+}: {
+  user: AuthUser;
+  onClose: () => void;
+}) {
+  const [conversation, setConversation] = useState<Conversation | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    fetchAuthenticated("/api/v1/chat/conversation/")
+      .then(async (response) => {
+        if (!response.ok) throw new Error(await getError(response));
+        return response.json() as Promise<Conversation>;
+      })
+      .then(setConversation)
+      .catch((reason) =>
+        setError(
+          reason instanceof Error ? reason.message : "شروع گفت‌وگو ناموفق بود.",
+        ),
+      );
+  }, [user.id]);
+  return (
+    <aside className="chat-widget" aria-label="گفت‌وگو با پشتیبانی">
+      <button
+        className="chat-widget-close"
+        type="button"
+        onClick={onClose}
+        aria-label="بستن گفت‌وگو"
+      >
+        <Icon name="close" size={19} />
+      </button>
+      {conversation ? (
+        <ChatThread conversation={conversation} user={user} />
+      ) : error ? (
+        <p className="orders-state error">{error}</p>
+      ) : (
+        <p className="orders-state">در حال آماده‌سازی گفت‌وگو…</p>
+      )}
+    </aside>
+  );
+}
+
+function AdminChatPage({ user }: { user: AuthUser | null }) {
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    if (user?.role !== "admin") return;
+    fetchAuthenticated("/api/v1/chat/conversations/")
+      .then(async (response) => {
+        if (!response.ok) throw new Error(await getError(response));
+        return response.json() as Promise<ConversationsResponse>;
+      })
+      .then((data) => {
+        setConversations(data.results);
+        setSelectedId(data.results[0]?.id ?? null);
+      })
+      .catch((reason) =>
+        setError(
+          reason instanceof Error
+            ? reason.message
+            : "دریافت گفت‌وگوها ناموفق بود.",
+        ),
+      )
+      .finally(() => setLoading(false));
+  }, [user?.id, user?.role]);
+  if (user?.role !== "admin")
+    return (
+      <PageState
+        title="دسترسی ندارید"
+        text="این صفحه فقط برای حساب‌های مدیر است."
+      />
+    );
+  const selected = conversations.find((item) => item.id === selectedId) ?? null;
+  return (
+    <main className="profile-page admin-chat-page">
+      <div className="page-heading">
+        <p className="eyebrow">پشتیبانی</p>
+        <h1>گفت‌وگوهای مشتریان</h1>
+        <p>هر گفت‌وگو به یک مشتری متصل است و همهٔ پیام‌ها تاریخچه دارند.</p>
+      </div>
+      {loading ? (
+        <p className="orders-state">در حال دریافت گفت‌وگوها…</p>
+      ) : error ? (
+        <p className="orders-state error">{error}</p>
+      ) : !conversations.length ? (
+        <p className="orders-state">
+          هنوز هیچ مشتری گفت‌وگویی را شروع نکرده است.
+        </p>
+      ) : (
+        <div className="admin-chat-layout">
+          <aside className="conversation-list" aria-label="فهرست گفت‌وگوها">
+            {conversations.map((conversation) => (
+              <button
+                className={
+                  conversation.id === selectedId
+                    ? "conversation-list-item active"
+                    : "conversation-list-item"
+                }
+                type="button"
+                key={conversation.id}
+                onClick={() => setSelectedId(conversation.id)}
+              >
+                <strong dir="ltr">{conversation.customer_phone}</strong>
+                <span>
+                  {conversation.last_message_at
+                    ? formatDate(conversation.last_message_at)
+                    : "بدون پیام"}
+                </span>
+              </button>
+            ))}
+          </aside>
+          {selected && <ChatThread conversation={selected} user={user} />}
+        </div>
+      )}
     </main>
   );
 }
@@ -1759,6 +2155,8 @@ function App() {
   const [route, setRoute] = useState<Route>(getRoute);
   const [categories, setCategories] = useState<Category[]>([]);
   const [authOpen, setAuthOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [openChatAfterAuth, setOpenChatAfterAuth] = useState(false);
   const [cart, setCart] = useState<Cart | null>(null);
   const [user, setUser] = useState<AuthUser | null>(
     () => getStoredAuth()?.user ?? null,
@@ -1772,6 +2170,7 @@ function App() {
     const expireSession = () => {
       setUser(null);
       setCart(null);
+      setChatOpen(false);
       setAuthOpen(true);
     };
     addEventListener("nexora-auth-expired", expireSession);
@@ -1814,6 +2213,18 @@ function App() {
     if (!response.ok) throw new Error(await getError(response));
     setCart((await response.json()) as Cart);
   }
+  function openChat() {
+    if (!user) {
+      setOpenChatAfterAuth(true);
+      setAuthOpen(true);
+      return;
+    }
+    if (user.role === "admin") {
+      navigate("/admin/chat");
+      return;
+    }
+    setChatOpen(true);
+  }
   const page =
     route.name === "home" ? (
       <HomePage categories={categories} />
@@ -1846,11 +2257,16 @@ function App() {
           sessionStorage.removeItem("nexora-auth");
           setUser(null);
           setCart(null);
+          setChatOpen(false);
           navigate("/");
         }}
       />
     ) : route.name === "admin-orders" ? (
       <AdminOrdersPage user={user} />
+    ) : route.name === "chat" ? (
+      <ChatPage user={user} />
+    ) : route.name === "admin-chat" ? (
+      <AdminChatPage user={user} />
     ) : (
       <PageState title="صفحه پیدا نشد" text="نشانی واردشده معتبر نیست." />
     );
@@ -1862,6 +2278,14 @@ function App() {
         profile={() => navigate("/profile")}
         cartCount={cart?.item_count ?? 0}
       />
+      <button
+        className="floating-chat-button"
+        type="button"
+        onClick={openChat}
+        aria-label="گفت‌وگو با پشتیبانی"
+      >
+        <Icon name="support" size={26} />
+      </button>
       {page}
       <footer id="about">
         <AppLink className="brand" href="/">
@@ -1879,8 +2303,14 @@ function App() {
             setUser(response.user);
             setAuthOpen(false);
             void loadCart();
+            if (openChatAfterAuth && response.user.role === "customer")
+              setChatOpen(true);
+            setOpenChatAfterAuth(false);
           }}
         />
+      )}
+      {chatOpen && user?.role === "customer" && (
+        <CustomerChatWidget user={user} onClose={() => setChatOpen(false)} />
       )}
     </div>
   );

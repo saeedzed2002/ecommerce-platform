@@ -74,12 +74,7 @@ class AdminOrderSerializer(OrderSerializer):
 
 
 class OrderStatusUpdateSerializer(serializers.Serializer):
-    status = serializers.ChoiceField(
-        choices=(
-            Order.Status.PROCESSING,
-            Order.Status.SHIPPED,
-        )
-    )
+    status = serializers.ChoiceField(choices=Order.Status.choices)
 
 
 class CheckoutSerializer(serializers.Serializer):

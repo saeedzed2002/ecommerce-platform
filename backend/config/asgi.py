@@ -7,10 +7,12 @@ from django.core.asgi import get_asgi_application
 
 django_asgi_app = get_asgi_application()
 
+from apps.chat.realtime import JwtAuthMiddleware
+from apps.chat.routing import websocket_urlpatterns
+
 application = ProtocolTypeRouter(
     {
         "http": django_asgi_app,
-        # apps.chat.routing will provide authenticated WebSocket routes.
-        "websocket": URLRouter([]),
+        "websocket": JwtAuthMiddleware(URLRouter(websocket_urlpatterns)),
     }
 )
