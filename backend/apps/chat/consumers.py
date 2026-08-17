@@ -25,12 +25,15 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
             await self.channel_layer.group_discard(self.group_name, self.channel_name)
 
     async def receive_json(self, content, **kwargs):
-        serializer = CreateMessageSerializer(data={"body": content.get("body")})
+        payload = {"body": content.get("body")}
+        if content.get("client_message_id") is not None:
+            payload["client_message_id"] = content["client_message_id"]
+        serializer = CreateMessageSerializer(data=payload)
         if not serializer.is_valid():
             await self.send_json({"type": "error", "detail": serializer.errors})
             return
         try:
-            message = await self._create_message(
+            message, created = await self._create_message(
                 self.scope["user"],
                 self.conversation_id,
                 serializer.validated_data["body"],
@@ -45,10 +48,13 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
                 }
             )
             return
-        await self.channel_layer.group_send(
-            self.group_name,
-            {"type": "chat.message", "message": message},
-        )
+        if created:
+            await self.channel_layer.group_send(
+                self.group_name,
+                {"type": "chat.message", "message": message},
+            )
+        else:
+            await self.send_json({"type": "message", "message": message})
 
     async def chat_message(self, event):
         await self.send_json({"type": "message", "message": event["message"]})
@@ -64,11 +70,11 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
     @database_sync_to_async
     def _create_message(
         self, user, conversation_id, body: str, client_message_id
-    ) -> dict:
-        message = create_message(
+    ) -> tuple[dict, bool]:
+        message, created = create_message(
             user=user,
             conversation_id=conversation_id,
             body=body,
             client_message_id=client_message_id,
         )
-        return message_payload(message)
+        return message_payload(message), created

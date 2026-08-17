@@ -1,12 +1,30 @@
 from django.contrib import admin
 
-from .models import Category, Product, ProductImage
+from .models import (
+    Category,
+    LaptopSpecification,
+    MobileSpecification,
+    Product,
+    ProductImage,
+)
 
 
 class ProductImageInline(admin.TabularInline):
     model = ProductImage
     extra = 0
     fields = ("image", "alt_text", "display_order")
+
+
+class LaptopSpecificationInline(admin.StackedInline):
+    model = LaptopSpecification
+    extra = 0
+    max_num = 1
+
+
+class MobileSpecificationInline(admin.StackedInline):
+    model = MobileSpecification
+    extra = 0
+    max_num = 1
 
 
 @admin.register(Category)
@@ -23,13 +41,15 @@ class ProductAdmin(admin.ModelAdmin):
     list_display = (
         "name",
         "category",
+        "product_type",
+        "brand",
         "price",
         "stock_quantity",
         "status",
         "is_featured",
     )
     list_editable = ("price", "stock_quantity", "status", "is_featured")
-    list_filter = ("status", "is_featured", "category")
+    list_filter = ("product_type", "status", "is_featured", "category")
     search_fields = ("name", "sku", "slug")
     prepopulated_fields = {"slug": ("name",)}
-    inlines = (ProductImageInline,)
+    inlines = (ProductImageInline, LaptopSpecificationInline, MobileSpecificationInline)

@@ -122,11 +122,12 @@ class MessageListCreateAPIView(APIView):
         conversation = self.get_conversation()
         serializer = CreateMessageSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        message = create_message(
+        message, created = create_message(
             user=request.user,
             conversation_id=conversation.id,
             body=serializer.validated_data["body"],
             client_message_id=serializer.validated_data.get("client_message_id"),
         )
-        publish_message(message)
+        if created:
+            publish_message(message)
         return Response(MessageSerializer(message).data, status=status.HTTP_201_CREATED)

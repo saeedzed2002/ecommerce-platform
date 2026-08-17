@@ -198,3 +198,35 @@ def test_customer_can_send_a_message_over_an_authenticated_websocket(
 
     async_to_sync(run_scenario)()
     assert Message.objects.get(conversation=conversation).body == "Customer message"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_websocket_client_message_identifier_is_idempotent(customer: User) -> None:
+    conversation = Conversation.objects.create(customer=customer)
+    token = str(AccessToken.for_user(customer))
+    client_message_id = "31a2143d-faa0-4747-97c3-49a91a6a15c2"
+
+    async def run_scenario() -> None:
+        communicator = WebsocketCommunicator(
+            application,
+            f"/ws/chat/{conversation.id}/",
+            subprotocols=["access_token", token],
+        )
+        try:
+            connected, _ = await communicator.connect()
+            assert connected is True
+            payload = {
+                "body": "Retry-safe message",
+                "client_message_id": client_message_id,
+            }
+            await communicator.send_json_to(payload)
+            first = await communicator.receive_json_from()
+            await communicator.send_json_to(payload)
+            second = await communicator.receive_json_from()
+            assert first["message"]["id"] == second["message"]["id"]
+            assert first["message"]["client_message_id"] == client_message_id
+        finally:
+            await communicator.disconnect()
+
+    async_to_sync(run_scenario)()
+    assert Message.objects.filter(conversation=conversation).count() == 1
