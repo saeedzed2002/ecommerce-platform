@@ -74,7 +74,7 @@ class Product(TimeStampedModel):
     def discount_percent(self) -> int:
         if not self.compare_at_price:
             return 0
-        return int((Decimal("1") - (self.price / self.compare_at_price)) * 100)
+        return int((Decimal(1) - (self.price / self.compare_at_price)) * 100)
 
     def clean(self) -> None:
         super().clean()
