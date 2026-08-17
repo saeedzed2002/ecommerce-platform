@@ -4,6 +4,7 @@ from .views import (
     AddressListCreateAPIView,
     AdminOrderListAPIView,
     AdminOrderStatusAPIView,
+    AdminOrderSummaryAPIView,
     CheckoutAPIView,
     OrderListAPIView,
     StartPaymentAPIView,
@@ -15,6 +16,11 @@ app_name = "orders"
 urlpatterns = [
     path("addresses/", AddressListCreateAPIView.as_view(), name="address-list"),
     path("admin/", AdminOrderListAPIView.as_view(), name="admin-order-list"),
+    path(
+        "admin/summary/",
+        AdminOrderSummaryAPIView.as_view(),
+        name="admin-order-summary",
+    ),
     path(
         "admin/<uuid:order_number>/status/",
         AdminOrderStatusAPIView.as_view(),

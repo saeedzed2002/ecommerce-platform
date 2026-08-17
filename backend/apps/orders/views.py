@@ -1,6 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.http import HttpResponseRedirect
 from rest_framework import status
 from rest_framework.exceptions import NotFound, ValidationError
@@ -75,6 +75,16 @@ class AdminOrderListAPIView(ListAPIView):
                 Q(number__icontains=query) | Q(user__phone__icontains=query)
             )
         return queryset
+
+
+class AdminOrderSummaryAPIView(APIView):
+    permission_classes = (IsPlatformAdmin,)
+
+    def get(self, request):
+        by_status = {status: 0 for status, _ in Order.Status.choices}
+        for item in Order.objects.values("status").annotate(count=Count("id")):
+            by_status[item["status"]] = item["count"]
+        return Response({"total": sum(by_status.values()), "by_status": by_status})
 
 
 class AdminOrderStatusAPIView(APIView):

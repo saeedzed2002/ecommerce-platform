@@ -98,6 +98,22 @@ def test_admin_can_list_conversations_and_reply(
 
 
 @pytest.mark.django_db
+def test_admin_gets_a_conversation_summary(
+    admin_client: APIClient, customer: User
+) -> None:
+    conversation = Conversation.objects.create(customer=customer)
+    Message.objects.create(conversation=conversation, sender=customer, body="Need help")
+
+    response = admin_client.get("/api/v1/chat/conversations/summary/")
+
+    assert response.status_code == 200
+    assert response.data["total"] == 1
+    assert response.data["by_status"][Conversation.Status.OPEN] == 1
+    assert response.data["unassigned_open"] == 1
+    assert response.data["unread_customer_messages"] == 1
+
+
+@pytest.mark.django_db
 def test_message_client_identifier_makes_rest_retries_idempotent(
     customer_client: APIClient, customer: User
 ) -> None:

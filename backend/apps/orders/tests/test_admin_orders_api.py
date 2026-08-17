@@ -94,6 +94,18 @@ def test_admin_lists_and_filters_orders(
 
 
 @pytest.mark.django_db
+def test_admin_gets_an_order_summary(
+    admin_client: APIClient, paid_order: Order
+) -> None:
+    response = admin_client.get("/api/v1/orders/admin/summary/")
+
+    assert response.status_code == 200
+    assert response.data["total"] == 1
+    assert response.data["by_status"][Order.Status.PAID] == 1
+    assert response.data["by_status"][Order.Status.PENDING] == 0
+
+
+@pytest.mark.django_db
 def test_admin_can_move_paid_order_through_fulfilment(
     admin_client: APIClient, paid_order: Order
 ) -> None:

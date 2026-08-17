@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.db.models import Count
 from rest_framework import status
 from rest_framework.exceptions import NotFound
 from rest_framework.generics import ListAPIView
@@ -6,6 +7,8 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+from apps.accounts.models import User
 
 from .models import Conversation, Message
 from .permissions import IsPlatformAdmin
@@ -40,6 +43,32 @@ class AdminConversationListAPIView(ListAPIView):
 
     def get_queryset(self):
         return Conversation.objects.select_related("customer", "assigned_admin")
+
+
+class AdminConversationSummaryAPIView(APIView):
+    permission_classes = (IsPlatformAdmin,)
+
+    def get(self, request):
+        by_status = {status: 0 for status, _ in Conversation.Status.choices}
+        for item in Conversation.objects.values("status").annotate(count=Count("id")):
+            by_status[item["status"]] = item["count"]
+        open_conversations = Conversation.objects.filter(
+            status=Conversation.Status.OPEN
+        )
+        return Response(
+            {
+                "total": sum(by_status.values()),
+                "by_status": by_status,
+                "unassigned_open": open_conversations.filter(
+                    assigned_admin__isnull=True
+                ).count(),
+                "unread_customer_messages": Message.objects.filter(
+                    conversation__status=Conversation.Status.OPEN,
+                    sender__role=User.Role.CUSTOMER,
+                    read_at__isnull=True,
+                ).count(),
+            }
+        )
 
 
 class AdminConversationManageAPIView(APIView):
