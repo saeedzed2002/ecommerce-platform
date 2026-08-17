@@ -6,7 +6,9 @@ django-cors-headers==4.9.0
 django-environ==0.14.0
 django-storages[s3]==1.14.6
 djangorestframework==3.18.0
+djangorestframework-simplejwt==5.5.1
 boto3==1.43.55
 Pillow==12.3.0
 psycopg[binary]==3.3.4
+requests==2.34.2
 uvicorn[standard]==0.52.3

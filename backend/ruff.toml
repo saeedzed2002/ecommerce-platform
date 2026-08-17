@@ -1,4 +1,8 @@
+[lint]
+extend-ignore = ["EXE002"]
+
 [lint.per-file-ignores]
+"apps/accounts/migrations/*.py" = ["RUF012"]
 "apps/catalog/admin.py" = ["RUF012"]
 "apps/catalog/migrations/*.py" = ["RUF012"]
 "apps/catalog/models.py" = ["RUF012"]

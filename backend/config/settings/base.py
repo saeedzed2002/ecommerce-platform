@@ -1,3 +1,4 @@
+from datetime import timedelta
 from pathlib import Path
 
 import environ
@@ -26,6 +27,8 @@ INSTALLED_APPS = [
     "channels",
     "corsheaders",
     "rest_framework",
+    "rest_framework_simplejwt.token_blacklist",
+    "apps.accounts",
     "apps.catalog",
 ]
 MIDDLEWARE = [
@@ -64,13 +67,39 @@ USE_I18N = True
 USE_TZ = True
 STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+AUTH_USER_MODEL = "accounts.User"
 CORS_ALLOWED_ORIGINS = env.list(
     "CORS_ALLOWED_ORIGINS", default=["http://localhost:5173"]
 )
 REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 12,
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ),
+    "DEFAULT_THROTTLE_RATES": {"otp": "10/hour"},
 }
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+}
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": env("CACHE_URL", default="redis://redis:6379/2"),
+    }
+}
+OTP_CODE_LENGTH = 6
+OTP_CODE_TTL_SECONDS = 5 * 60
+OTP_RESEND_COOLDOWN_SECONDS = 60
+OTP_MAX_VERIFY_ATTEMPTS = 5
+SMSIR_API_KEY = env("SMSIR_API_KEY", default="")
+SMSIR_LINE_NUMBER = env("SMSIR_LINE_NUMBER", default="")
+SMSIR_BULK_ENDPOINT = env(
+    "SMSIR_BULK_ENDPOINT", default="https://api.sms.ir/v1/send/bulk"
+)
 STORAGES = {
     "default": {
         "BACKEND": "storages.backends.s3.S3Storage",

@@ -1,8 +1,25 @@
-import { StrictMode, type ReactNode, useEffect, useState } from "react";
+import {
+  StrictMode,
+  type FormEvent,
+  type ReactNode,
+  useEffect,
+  useState,
+} from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 
-type IconName = "arrow" | "bag" | "heart" | "menu" | "search" | "truck" | "shield" | "support";
+type IconName =
+  | "arrow"
+  | "bag"
+  | "close"
+  | "heart"
+  | "lock"
+  | "menu"
+  | "search"
+  | "shield"
+  | "support"
+  | "truck"
+  | "user";
 
 type Category = {
   id: number;
@@ -30,6 +47,20 @@ type ProductListResponse = {
   results: Product[];
 };
 
+type AuthUser = {
+  id: number;
+  phone: string;
+  role: "customer" | "admin";
+};
+
+type AuthResponse = {
+  access: string;
+  refresh: string;
+  user: AuthUser;
+};
+
+type AuthPanel = "customer-phone" | "customer-code" | "admin";
+
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000").replace(/\/$/, "");
 const categoryIcons = ["⌁", "◒", "⌂", "✦"];
 const categoryTones = ["blue", "peach", "mint", "lilac"];
@@ -43,13 +74,152 @@ function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
     arrow: <path d="M19 12H5m6-6-6 6 6 6" />,
     bag: <><path d="M6 8h12l1 12H5L6 8Z" /><path d="M9 9V6a3 3 0 0 1 6 0v3" /></>,
     heart: <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.9-8.6a5.5 5.5 0 0 0-.1-7.8Z" />,
+    close: <path d="m6 6 12 12M18 6 6 18" />,
+    lock: <><rect x="5" y="10" width="14" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></>,
     menu: <><path d="M4 7h16M4 12h16M4 17h16" /></>,
     search: <><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></>,
     truck: <><path d="M3 6h11v10H3zM14 10h4l3 3v3h-7z" /><circle cx="7" cy="18" r="1.5" /><circle cx="18" cy="18" r="1.5" /></>,
     shield: <path d="M12 3 5 6v5c0 4.5 3 8.2 7 10 4-1.8 7-5.5 7-10V6l-7-3Z" />,
     support: <><path d="M4 13a8 8 0 0 1 16 0" /><path d="M4 13v4a2 2 0 0 0 2 2h1v-6H6a2 2 0 0 0-2 2Zm16 0v4a2 2 0 0 1-2 2h-1v-6h1a2 2 0 0 1 2 2Z" /><path d="M17 19c0 2-2 2-5 2" /></>,
+    user: <><circle cx="12" cy="8" r="3.5" /><path d="M5 21a7 7 0 0 1 14 0" /></>,
   };
   return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
+}
+
+function getApiError(response: Response) {
+  return response
+    .json()
+    .then((body: { detail?: string }) => body.detail ?? "عملیات انجام نشد.")
+    .catch(() => "ارتباط با سرور برقرار نشد.");
+}
+
+function AuthDialog({
+  onClose,
+  onAuthenticated,
+}: {
+  onClose: () => void;
+  onAuthenticated: (response: AuthResponse) => void;
+}) {
+  const [panel, setPanel] = useState<AuthPanel>("customer-phone");
+  const [phone, setPhone] = useState("");
+  const [code, setCode] = useState("");
+  const [password, setPassword] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [message, setMessage] = useState("");
+
+  async function submitCustomerPhone(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsSubmitting(true);
+    setMessage("");
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/v1/auth/otp/request/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone }),
+      });
+      if (!response.ok) throw new Error(await getApiError(response));
+      setPanel("customer-code");
+      setMessage("کد تأیید برای شمارهٔ شما ارسال شد.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "ارسال کد ناموفق بود.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function submitCustomerCode(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsSubmitting(true);
+    setMessage("");
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/v1/auth/otp/verify/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, code }),
+      });
+      if (!response.ok) throw new Error(await getApiError(response));
+      onAuthenticated((await response.json()) as AuthResponse);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "تأیید کد ناموفق بود.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function submitAdminLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsSubmitting(true);
+    setMessage("");
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/v1/auth/admin/login/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, password }),
+      });
+      if (!response.ok) throw new Error(await getApiError(response));
+      onAuthenticated((await response.json()) as AuthResponse);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "ورود مدیر ناموفق بود.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  const customerFlow = panel !== "admin";
+  return <div className="auth-backdrop" role="presentation" onMouseDown={onClose}>
+    <section className="auth-dialog" role="dialog" aria-modal="true" aria-labelledby="auth-title" onMouseDown={(event) => event.stopPropagation()}>
+      <button className="auth-close" type="button" onClick={onClose} aria-label="بستن پنجره ورود"><Icon name="close" size={19} /></button>
+      <div className="auth-brand"><span className="brand-mark">n</span><span>نوکسا</span></div>
+      <div className="auth-heading"><p className="eyebrow">{customerFlow ? "خوش آمدی" : "دسترسی مدیریت"}</p><h2 id="auth-title">{panel === "customer-code" ? "کد تأیید را وارد کن" : customerFlow ? "ورود یا ثبت‌نام" : "ورود مدیر"}</h2><p>{panel === "customer-code" ? "کد شش‌رقمی ارسال‌شده به شمارهٔ موبایلت را وارد کن." : customerFlow ? "با شمارهٔ موبایل وارد شو؛ اگر حساب نداشته باشی، همان لحظه ساخته می‌شود." : "ورود مدیر فقط با شمارهٔ ثبت‌شده و رمز عبور انجام می‌شود."}</p></div>
+
+      {panel === "customer-phone" && <form className="auth-form" onSubmit={submitCustomerPhone}><label htmlFor="customer-phone">شمارهٔ موبایل</label><input id="customer-phone" value={phone} onChange={(event) => setPhone(event.target.value)} inputMode="tel" autoComplete="tel" placeholder="۰۹۱۲ ۱۲۳ ۴۵۶۷" required /><button className="auth-submit" type="submit" disabled={isSubmitting}>{isSubmitting ? "در حال ارسال…" : "دریافت کد تأیید"}<Icon name="arrow" size={18} /></button></form>}
+      {panel === "customer-code" && <form className="auth-form" onSubmit={submitCustomerCode}><label htmlFor="customer-code">کد تأیید</label><input className="otp-input" id="customer-code" value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" placeholder="— — — — — —" required /><button className="auth-submit" type="submit" disabled={isSubmitting || code.length !== 6}>{isSubmitting ? "در حال بررسی…" : "تأیید و ورود"}<Icon name="arrow" size={18} /></button><button className="auth-back" type="button" onClick={() => { setPanel("customer-phone"); setCode(""); setMessage(""); }}>اصلاح شمارهٔ موبایل</button></form>}
+      {panel === "admin" && <form className="auth-form" onSubmit={submitAdminLogin}><label htmlFor="admin-phone">شمارهٔ موبایل مدیر</label><input id="admin-phone" value={phone} onChange={(event) => setPhone(event.target.value)} inputMode="tel" autoComplete="username" placeholder="۰۹۱۲ ۱۲۳ ۴۵۶۷" required /><label htmlFor="admin-password">رمز عبور</label><input id="admin-password" value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="current-password" placeholder="رمز عبور مدیر" required /><button className="auth-submit" type="submit" disabled={isSubmitting}>{isSubmitting ? "در حال ورود…" : "ورود به حساب مدیر"}<Icon name="lock" size={17} /></button></form>}
+      {message && <p className="auth-message" role="status">{message}</p>}
+      <div className="auth-switch"><span>{customerFlow ? "مدیر هستی؟" : "مشتری هستی؟"}</span><button type="button" onClick={() => { setPanel(customerFlow ? "admin" : "customer-phone"); setMessage(""); }}>{customerFlow ? "ورود مدیر" : "ورود یا ثبت‌نام با موبایل"}</button></div>
+    </section>
+  </div>;
+}
+
+function ProfileDialog({
+  user,
+  onClose,
+  onSignOut,
+}: {
+  user: AuthUser;
+  onClose: () => void;
+  onSignOut: () => void;
+}) {
+  const [profile, setProfile] = useState<AuthUser>(user);
+  const [isRefreshing, setIsRefreshing] = useState(true);
+
+  useEffect(() => {
+    const stored = sessionStorage.getItem("nexora-auth");
+    if (!stored) {
+      setIsRefreshing(false);
+      return;
+    }
+    const session = JSON.parse(stored) as AuthResponse;
+    fetch(`${apiBaseUrl}/api/v1/auth/me/`, {
+      headers: { Authorization: `Bearer ${session.access}` },
+    })
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((currentUser: AuthUser) => setProfile(currentUser))
+      .catch(() => undefined)
+      .finally(() => setIsRefreshing(false));
+  }, []);
+
+  return <div className="auth-backdrop" role="presentation" onMouseDown={onClose}>
+    <section className="profile-dialog" role="dialog" aria-modal="true" aria-labelledby="profile-title" onMouseDown={(event) => event.stopPropagation()}>
+      <button className="auth-close" type="button" onClick={onClose} aria-label="بستن پروفایل"><Icon name="close" size={19} /></button>
+      <div className="profile-avatar"><Icon name="user" size={29} /></div>
+      <p className="eyebrow">{profile.role === "admin" ? "حساب مدیریت" : "حساب کاربری"}</p>
+      <h2 id="profile-title">{profile.role === "admin" ? "مدیر نوکسا" : "پروفایل من"}</h2>
+      <p className="profile-description">{isRefreshing ? "در حال به‌روزرسانی اطلاعات…" : "خوش آمدی. اطلاعات ورود این نشست در این بخش نمایش داده می‌شود."}</p>
+      <dl className="profile-details"><div><dt>شمارهٔ موبایل</dt><dd dir="ltr">{profile.phone}</dd></div><div><dt>نوع حساب</dt><dd>{profile.role === "admin" ? "مدیر" : "مشتری"}</dd></div></dl>
+      <button className="signout-button" type="button" onClick={onSignOut}>خروج از حساب</button>
+    </section>
+  </div>;
 }
 
 function App() {
@@ -57,6 +227,28 @@ function App() {
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(() => {
+    try {
+      const stored = sessionStorage.getItem("nexora-auth");
+      return stored ? (JSON.parse(stored) as AuthResponse).user : null;
+    } catch {
+      return null;
+    }
+  });
+
+  function handleAuthenticated(response: AuthResponse) {
+    sessionStorage.setItem("nexora-auth", JSON.stringify(response));
+    setAuthUser(response.user);
+    setIsAuthOpen(false);
+  }
+
+  function signOut() {
+    sessionStorage.removeItem("nexora-auth");
+    setAuthUser(null);
+    setIsProfileOpen(false);
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -95,7 +287,7 @@ function App() {
     <header className="site-header">
       <a className="brand" href="#home" aria-label="خانه نوکسا"><span className="brand-mark">n</span><span>نوکسا</span></a>
       <nav className="desktop-nav" aria-label="ناوبری اصلی"><a href="#products">فروشگاه</a><a href="#categories">دسته‌بندی‌ها</a><a href="#offers">پیشنهادها</a><a href="#about">درباره‌ی ما</a></nav>
-      <div className="header-actions"><button className="icon-button" aria-label="جست‌وجو"><Icon name="search" /></button><button className="icon-button" aria-label="علاقه‌مندی‌ها"><Icon name="heart" /></button><button className="cart-button" aria-label="سبد خرید"><Icon name="bag" /><span>۰</span></button><button className="menu-button" aria-label="منو"><Icon name="menu" /></button></div>
+      <div className="header-actions"><button className="icon-button" aria-label="جست‌وجو"><Icon name="search" /></button><button className="icon-button" aria-label="علاقه‌مندی‌ها"><Icon name="heart" /></button><button className="cart-button" aria-label="سبد خرید"><Icon name="bag" /><span>۰</span></button>{authUser ? <button className="account-button signed-in" type="button" onClick={() => setIsProfileOpen(true)}><Icon name="user" size={17} /><span>{authUser.role === "admin" ? "مدیر" : "پروفایل"}</span></button> : <button className="account-button" type="button" onClick={() => setIsAuthOpen(true)}><Icon name="user" size={17} /><span>ورود | ثبت‌نام</span></button>}<button className="menu-button" aria-label="منو"><Icon name="menu" /></button></div>
     </header>
 
     <main id="home">
@@ -113,6 +305,8 @@ function App() {
       <section className="member-banner" id="offers"><div><p className="eyebrow">پیشنهاد ویژه‌ی اعضا</p><h2>به جمع نوکسا کلاب بپیوند.</h2><p>از تخفیف‌های شخصی‌سازی‌شده و خبرهای تازه زودتر باخبر شو.</p><a className="button button-dark" href="#join">عضویت در باشگاه <Icon name="arrow" size={18} /></a></div><div className="banner-shape">N<span>+</span></div></section>
     </main>
     <footer id="about"><a className="brand" href="#home"><span className="brand-mark">n</span><span>نوکسا</span></a><p>یک تجربه‌ی ساده‌تر برای انتخاب و خرید بهتر.</p><small>© ۱۴۰۵ نوکسا. تمامی حقوق محفوظ است.</small></footer>
+    {isAuthOpen && <AuthDialog onClose={() => setIsAuthOpen(false)} onAuthenticated={handleAuthenticated} />}
+    {authUser && isProfileOpen && <ProfileDialog user={authUser} onClose={() => setIsProfileOpen(false)} onSignOut={signOut} />}
   </div>;
 }
 
