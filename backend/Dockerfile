@@ -9,5 +9,7 @@ FROM base AS development
 RUN pip install -r requirements/dev.txt
 CMD ["uvicorn", "config.asgi:application", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 FROM base AS production
-RUN pip install gunicorn==26.0.0
+ENV DJANGO_SETTINGS_MODULE=config.settings.production
+RUN pip install gunicorn==26.0.0 \
+ && DJANGO_SECRET_KEY=build-only-secret-key-not-for-production DJANGO_DEBUG=false DJANGO_ALLOWED_HOSTS=localhost python manage.py collectstatic --noinput
 CMD ["gunicorn", "config.asgi:application", "-k", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000"]

@@ -12,3 +12,4 @@ Pillow==12.3.0
 psycopg[binary]==3.3.4
 requests==2.34.2
 uvicorn[standard]==0.52.3
+whitenoise==6.11.0
