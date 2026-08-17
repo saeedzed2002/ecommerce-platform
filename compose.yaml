@@ -95,6 +95,18 @@ services:
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}
       rabbitmq: {condition: service_healthy}
+  celery-beat:
+    build:
+      context: ./backend
+      target: development
+    command: celery -A config beat --loglevel=INFO
+    env_file: .env
+    volumes: [./backend:/app]
+    restart: unless-stopped
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      rabbitmq: {condition: service_healthy}
   frontend:
     build:
       context: ./frontend

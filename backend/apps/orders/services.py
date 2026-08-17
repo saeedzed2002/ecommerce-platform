@@ -1,7 +1,10 @@
+from datetime import timedelta
 from decimal import Decimal
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from apps.cart.models import CartItem
@@ -46,6 +49,8 @@ def create_order_from_cart(*, user, address_id: int) -> Order:
     order = Order.objects.create(
         user=user,
         subtotal=subtotal,
+        expires_at=timezone.now()
+        + timedelta(minutes=settings.ORDER_PAYMENT_RESERVATION_MINUTES),
         shipping_full_name=address.full_name,
         shipping_phone=address.phone,
         shipping_province=address.province,

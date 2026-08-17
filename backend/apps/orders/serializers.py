@@ -51,7 +51,15 @@ class OrderSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Order
-        fields = ("id", "number", "status", "subtotal", "items", "created_at")
+        fields = (
+            "id",
+            "number",
+            "status",
+            "subtotal",
+            "expires_at",
+            "items",
+            "created_at",
+        )
 
 
 class CheckoutSerializer(serializers.Serializer):

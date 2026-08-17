@@ -102,6 +102,19 @@ SMSIR_LINE_NUMBER = env("SMSIR_LINE_NUMBER", default="")
 SMSIR_BULK_ENDPOINT = env(
     "SMSIR_BULK_ENDPOINT", default="https://api.sms.ir/v1/send/bulk"
 )
+ZARINPAL_MERCHANT_ID = env("ZARINPAL_MERCHANT_ID", default="")
+ZARINPAL_SANDBOX = env.bool("ZARINPAL_SANDBOX", default=True)
+ZARINPAL_CALLBACK_URL = env(
+    "ZARINPAL_CALLBACK_URL",
+    default="http://localhost:8000/api/v1/orders/payments/zarinpal/callback/",
+)
+ZARINPAL_REQUEST_TIMEOUT_SECONDS = env.int(
+    "ZARINPAL_REQUEST_TIMEOUT_SECONDS", default=10
+)
+FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:5173")
+ORDER_PAYMENT_RESERVATION_MINUTES = env.int(
+    "ORDER_PAYMENT_RESERVATION_MINUTES", default=15
+)
 STORAGES = {
     "default": {
         "BACKEND": "storages.backends.s3.S3Storage",
@@ -136,3 +149,9 @@ CELERY_BROKER_URL = env(
 CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default="redis://redis:6379/1")
 CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 30 * 60
+CELERY_BEAT_SCHEDULE = {
+    "expire-pending-orders": {
+        "task": "apps.orders.tasks.expire_pending_orders",
+        "schedule": 60.0,
+    }
+}

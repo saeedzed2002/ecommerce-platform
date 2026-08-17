@@ -68,12 +68,14 @@ type Address = {
 };
 type AuthUser = { id: number; phone: string; role: "customer" | "admin" };
 type AuthResponse = { access: string; refresh: string; user: AuthUser };
+type Order = { number: string; status: string; subtotal: string };
 type Route =
   | { name: "home" }
   | { name: "catalog"; category: string | null }
   | { name: "product"; slug: string }
   | { name: "cart" }
   | { name: "checkout" }
+  | { name: "payment-result" }
   | { name: "not-found" };
 const apiBaseUrl = (
   import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000"
@@ -90,6 +92,8 @@ function getRoute(): Route {
   if (parts[0] === "cart" && parts.length === 1) return { name: "cart" };
   if (parts[0] === "checkout" && parts.length === 1)
     return { name: "checkout" };
+  if (parts[0] === "payment-result" && parts.length === 1)
+    return { name: "payment-result" };
   if (parts[0] !== "products") return { name: "not-found" };
   if (parts.length === 1)
     return {
@@ -929,6 +933,7 @@ function CheckoutPage({
   const [selected, setSelected] = useState<number | null>(null);
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState(false);
+  const [paymentOrder, setPaymentOrder] = useState<Order | null>(null);
   const [form, setForm] = useState({
     full_name: "",
     phone: "",
@@ -984,6 +989,7 @@ function CheckoutPage({
     }
     setPending(true);
     setMessage("");
+    let order: Order | null = null;
     try {
       const response = await fetchAuthenticated("/api/v1/orders/checkout/", {
         method: "POST",
@@ -991,11 +997,40 @@ function CheckoutPage({
         body: JSON.stringify({ address_id: selected }),
       });
       if (!response.ok) throw new Error(await getError(response));
+      order = (await response.json()) as Order;
       onOrderCreated();
-      setMessage("سفارش با موفقیت ثبت شد. پرداخت در مرحله بعد اضافه می‌شود.");
+      setPaymentOrder(order);
+      await startPayment(order);
     } catch (reason) {
       setMessage(
-        reason instanceof Error ? reason.message : "ثبت سفارش ناموفق بود.",
+        order
+          ? `سفارش ثبت شد، اما شروع پرداخت ناموفق بود: ${reason instanceof Error ? reason.message : "خطای ناشناخته"}`
+          : reason instanceof Error
+            ? reason.message
+            : "ثبت سفارش ناموفق بود.",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+  async function startPayment(order: Order) {
+    const response = await fetchAuthenticated(
+      `/api/v1/orders/${order.number}/payment/`,
+      { method: "POST" },
+    );
+    if (!response.ok) throw new Error(await getError(response));
+    const payment = (await response.json()) as { authorization_url: string };
+    location.assign(payment.authorization_url);
+  }
+  async function retryPayment() {
+    if (!paymentOrder) return;
+    setPending(true);
+    setMessage("");
+    try {
+      await startPayment(paymentOrder);
+    } catch (reason) {
+      setMessage(
+        reason instanceof Error ? reason.message : "شروع پرداخت ناموفق بود.",
       );
     } finally {
       setPending(false);
@@ -1123,15 +1158,37 @@ function CheckoutPage({
           <button
             className="checkout-button"
             type="button"
-            disabled={pending || !cart?.items.length}
-            onClick={checkout}
+            disabled={pending || (!cart?.items.length && !paymentOrder)}
+            onClick={() => void (paymentOrder ? retryPayment() : checkout())}
           >
-            ثبت سفارش
+            {paymentOrder ? "تلاش دوباره برای پرداخت" : "ثبت سفارش و پرداخت"}
           </button>
-          <p>پرداخت آنلاین هنوز فعال نیست.</p>
+          <p>پس از ثبت سفارش به درگاه پرداخت هدایت می‌شوی.</p>
           {message && <p className="cart-message">{message}</p>}
         </aside>
       </div>
+    </main>
+  );
+}
+
+function PaymentResultPage() {
+  const query = new URLSearchParams(location.search);
+  const paid = query.get("status") === "paid";
+  const order = query.get("order");
+  const referenceId = query.get("ref_id");
+  return (
+    <main className="page-state">
+      <h1>{paid ? "پرداخت با موفقیت تأیید شد" : "پرداخت ناموفق بود"}</h1>
+      <p>
+        {paid
+          ? "سفارش شما ثبت و پرداخت آن تأیید شد."
+          : "پرداخت تأیید نشد؛ در صورت باقی‌بودن زمان سفارش، دوباره تلاش کن."}
+      </p>
+      {order && <p>شماره سفارش: {order}</p>}
+      {paid && referenceId && <p>شماره پیگیری: {referenceId}</p>}
+      <AppLink className="button button-primary" href="/products">
+        بازگشت به محصولات
+      </AppLink>
     </main>
   );
 }
@@ -1413,6 +1470,8 @@ function App() {
           );
         }}
       />
+    ) : route.name === "payment-result" ? (
+      <PaymentResultPage />
     ) : (
       <PageState title="صفحه پیدا نشد" text="نشانی واردشده معتبر نیست." />
     );

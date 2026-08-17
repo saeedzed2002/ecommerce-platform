@@ -31,6 +31,7 @@ class Order(TimeStampedModel):
         PAID = "paid", "Paid"
         PROCESSING = "processing", "Processing"
         SHIPPED = "shipped", "Shipped"
+        EXPIRED = "expired", "Expired"
         CANCELLED = "cancelled", "Cancelled"
 
     user = models.ForeignKey(
@@ -40,6 +41,7 @@ class Order(TimeStampedModel):
     status = models.CharField(
         max_length=16, choices=Status.choices, default=Status.PENDING
     )
+    expires_at = models.DateTimeField(null=True, blank=True)
     subtotal = models.DecimalField(max_digits=12, decimal_places=0)
     shipping_full_name = models.CharField(max_length=180)
     shipping_phone = models.CharField(max_length=15)
@@ -53,6 +55,36 @@ class Order(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"Order {self.number}"
+
+
+class PaymentAttempt(TimeStampedModel):
+    class Provider(models.TextChoices):
+        ZARINPAL = "zarinpal", "Zarinpal"
+
+    class Status(models.TextChoices):
+        CREATED = "created", "Created"
+        REQUESTED = "requested", "Requested"
+        VERIFIED = "verified", "Verified"
+        FAILED = "failed", "Failed"
+        EXPIRED = "expired", "Expired"
+
+    order = models.ForeignKey(
+        Order, on_delete=models.PROTECT, related_name="payment_attempts"
+    )
+    provider = models.CharField(max_length=24, choices=Provider.choices)
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.CREATED
+    )
+    amount = models.PositiveBigIntegerField()
+    authority = models.CharField(max_length=128, unique=True, null=True, blank=True)
+    reference_id = models.CharField(max_length=64, blank=True)
+    failure_reason = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        ordering = ("-created_at",)
+
+    def __str__(self) -> str:
+        return f"{self.provider} payment for {self.order.number}"
 
 
 class OrderItem(models.Model):

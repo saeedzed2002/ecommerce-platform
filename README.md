@@ -14,7 +14,7 @@ The catalog, accounts, cart, and checkout foundations are merged into `main`.
 - Cart and checkout: authenticated carts, delivery addresses, transactional stock reduction, price snapshots, and pending orders.
 - Quality: backend linting, formatting checks, tests, Django system checks, and frontend builds run in CI.
 
-The project is still pre-release (`v0.1.0`). Checkout currently creates a pending order; payment, expiration/cancellation policy, fulfillment, and chat are not implemented yet.
+The project is still pre-release (`v0.1.0`). Checkout reserves stock for fifteen minutes, starts a Zarinpal sandbox payment, verifies the callback, and restores stock for expired orders. Fulfillment, cancellation/refunds, and chat are not implemented yet.
 
 ## Architecture
 
@@ -140,6 +140,12 @@ Authentication endpoints are versioned under `/api/v1/auth/`.
 The verification code is hashed in the database, expires after five minutes, is single-use, allows at most five failed attempts, and cannot be requested again for the same phone number for sixty seconds. The API also applies an anonymous-IP throttle.
 
 The storefront has one `ورود | ثبت‌نام` action: customers use the OTP flow, while administrators select the dedicated password form. Browser-session tokens are held in `sessionStorage` until the user signs out or closes the tab.
+
+## Zarinpal sandbox payment
+
+Checkout creates a `pending` order with a fifteen-minute stock reservation. The customer is redirected to Zarinpal after `POST /api/v1/orders/<order-number>/payment/`; the callback verifies the authority and redirects the browser to the storefront payment result page. Celery Beat expires unpaid orders every minute and restores their stock.
+
+For local sandbox testing, keep `ZARINPAL_SANDBOX=true`, set any UUID-formatted value for `ZARINPAL_MERCHANT_ID`, and use the default localhost callback URL. The redirect returns in the same browser, so it can reach the local backend. In a deployed environment, set `ZARINPAL_CALLBACK_URL` and `FRONTEND_URL` to the public HTTPS backend and storefront URLs.
 
 ### SMS.ir configuration
 
