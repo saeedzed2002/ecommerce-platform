@@ -12,6 +12,7 @@ from .services import create_order_from_cart
 class AddressListCreateAPIView(ListCreateAPIView):
     permission_classes = (IsAuthenticated,)
     serializer_class = AddressSerializer
+    pagination_class = None
 
     def get_queryset(self):
         return Address.objects.filter(user=self.request.user)

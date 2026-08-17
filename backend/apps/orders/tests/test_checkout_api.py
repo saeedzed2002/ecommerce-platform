@@ -90,6 +90,38 @@ def test_checkout_rejects_another_users_address(
 
 
 @pytest.mark.django_db
+def test_address_list_returns_only_the_authenticated_users_addresses(
+    client: APIClient, user: User, address: Address
+) -> None:
+    other = User.objects.create_user(phone="989121234568")
+    Address.objects.create(
+        user=other,
+        full_name="Other User",
+        phone="989121234568",
+        province="Tehran",
+        city="Tehran",
+        address_line="Other street",
+        postal_code="1234567891",
+    )
+
+    response = client.get("/api/v1/orders/addresses/")
+
+    assert response.status_code == 200
+    assert response.data == [
+        {
+            "id": address.id,
+            "full_name": "Test User",
+            "phone": "989121234567",
+            "province": "Tehran",
+            "city": "Tehran",
+            "address_line": "Street",
+            "postal_code": "1234567890",
+            "is_default": False,
+        }
+    ]
+
+
+@pytest.mark.django_db
 def test_checkout_does_not_oversell(
     client: APIClient, user: User, product: Product, address: Address
 ) -> None:

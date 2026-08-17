@@ -203,13 +203,73 @@ function getError(response: Response) {
     .then((body: { detail?: string }) => body.detail ?? "عملیات انجام نشد.")
     .catch(() => "ارتباط با سرور برقرار نشد.");
 }
-function getAccessToken() {
+function getStoredAuth() {
   try {
     const raw = sessionStorage.getItem("nexora-auth");
-    return raw ? (JSON.parse(raw) as AuthResponse).access : null;
+    return raw ? (JSON.parse(raw) as AuthResponse) : null;
   } catch {
     return null;
   }
+}
+function getAccessToken() {
+  return getStoredAuth()?.access ?? null;
+}
+function clearStoredAuth() {
+  sessionStorage.removeItem("nexora-auth");
+  dispatchEvent(new Event("nexora-auth-expired"));
+}
+let refreshPromise: Promise<AuthResponse | null> | null = null;
+function refreshAccessToken(): Promise<AuthResponse | null> {
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    const auth = getStoredAuth();
+    if (!auth) return null;
+
+    const refreshResponse = await fetch(
+      `${apiBaseUrl}/api/v1/auth/token/refresh/`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh: auth.refresh }),
+      },
+    );
+    if (!refreshResponse.ok) return null;
+
+    const refreshed = (await refreshResponse.json()) as {
+      access: string;
+      refresh?: string;
+    };
+    const nextAuth = {
+      ...auth,
+      access: refreshed.access,
+      refresh: refreshed.refresh ?? auth.refresh,
+    };
+    sessionStorage.setItem("nexora-auth", JSON.stringify(nextAuth));
+    return nextAuth;
+  })().finally(() => {
+    refreshPromise = null;
+  });
+  return refreshPromise;
+}
+async function fetchAuthenticated(path: string, init: RequestInit = {}) {
+  const auth = getStoredAuth();
+  if (!auth) throw new Error("برای ادامه ابتدا وارد حساب کاربری شو.");
+
+  const headers = new Headers(init.headers);
+  headers.set("Authorization", `Bearer ${auth.access}`);
+  let response = await fetch(`${apiBaseUrl}${path}`, { ...init, headers });
+  if (response.status !== 401) return response;
+
+  const nextAuth = await refreshAccessToken();
+  if (!nextAuth) {
+    clearStoredAuth();
+    throw new Error("نشست شما منقضی شده است. دوباره وارد حساب کاربری شو.");
+  }
+
+  headers.set("Authorization", `Bearer ${nextAuth.access}`);
+  response = await fetch(`${apiBaseUrl}${path}`, { ...init, headers });
+  return response;
 }
 
 function AuthDialog({
@@ -877,10 +937,6 @@ function CheckoutPage({
     address_line: "",
     postal_code: "",
   });
-  const headers = () => ({
-    Authorization: `Bearer ${getAccessToken()}`,
-    "Content-Type": "application/json",
-  });
   useEffect(() => {
     if (!user) {
       setAddresses([]);
@@ -888,7 +944,7 @@ function CheckoutPage({
       setMessage("");
       return;
     }
-    fetch(`${apiBaseUrl}/api/v1/orders/addresses/`, { headers: headers() })
+    fetchAuthenticated("/api/v1/orders/addresses/")
       .then((response) => (response.ok ? response.json() : Promise.reject()))
       .then((data: Address[]) => {
         setAddresses(data);
@@ -903,9 +959,9 @@ function CheckoutPage({
     setPending(true);
     setMessage("");
     try {
-      const response = await fetch(`${apiBaseUrl}/api/v1/orders/addresses/`, {
+      const response = await fetchAuthenticated("/api/v1/orders/addresses/", {
         method: "POST",
-        headers: headers(),
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...form, is_default: !addresses.length }),
       });
       if (!response.ok) throw new Error(await getError(response));
@@ -929,9 +985,9 @@ function CheckoutPage({
     setPending(true);
     setMessage("");
     try {
-      const response = await fetch(`${apiBaseUrl}/api/v1/orders/checkout/`, {
+      const response = await fetchAuthenticated("/api/v1/orders/checkout/", {
         method: "POST",
-        headers: headers(),
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ address_id: selected }),
       });
       if (!response.ok) throw new Error(await getError(response));
@@ -1269,18 +1325,23 @@ function App() {
   const [authOpen, setAuthOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [cart, setCart] = useState<Cart | null>(null);
-  const [user, setUser] = useState<AuthUser | null>(() => {
-    try {
-      const raw = sessionStorage.getItem("nexora-auth");
-      return raw ? (JSON.parse(raw) as AuthResponse).user : null;
-    } catch {
-      return null;
-    }
-  });
+  const [user, setUser] = useState<AuthUser | null>(
+    () => getStoredAuth()?.user ?? null,
+  );
   useEffect(() => {
     const update = () => setRoute(getRoute());
     addEventListener("popstate", update);
     return () => removeEventListener("popstate", update);
+  }, []);
+  useEffect(() => {
+    const expireSession = () => {
+      setUser(null);
+      setCart(null);
+      setProfileOpen(false);
+      setAuthOpen(true);
+    };
+    addEventListener("nexora-auth-expired", expireSession);
+    return () => removeEventListener("nexora-auth-expired", expireSession);
   }, []);
   useEffect(() => {
     const controller = new AbortController();
@@ -1293,14 +1354,11 @@ function App() {
     return () => controller.abort();
   }, []);
   async function loadCart() {
-    const access = getAccessToken();
-    if (!access) {
+    if (!getAccessToken()) {
       setCart(null);
       return;
     }
-    const response = await fetch(`${apiBaseUrl}/api/v1/cart/`, {
-      headers: { Authorization: `Bearer ${access}` },
-    });
+    const response = await fetchAuthenticated("/api/v1/cart/");
     if (!response.ok) throw new Error(await getError(response));
     setCart((await response.json()) as Cart);
   }
@@ -1312,13 +1370,9 @@ function App() {
     method: "POST" | "PATCH" | "DELETE",
     body?: object,
   ) {
-    const access = getAccessToken();
-    if (!access)
-      throw new Error("برای افزودن به سبد خرید ابتدا وارد حساب کاربری شو.");
-    const response = await fetch(`${apiBaseUrl}/api/v1/cart/${path}`, {
+    const response = await fetchAuthenticated(`/api/v1/cart/${path}`, {
       method,
       headers: {
-        Authorization: `Bearer ${access}`,
         "Content-Type": "application/json",
       },
       body: body ? JSON.stringify(body) : undefined,
