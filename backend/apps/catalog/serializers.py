@@ -31,8 +31,17 @@ class ProductListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = (
-            "id", "name", "slug", "short_description", "price", "compare_at_price",
-            "discount_percent", "in_stock", "category", "primary_image", "created_at",
+            "id",
+            "name",
+            "slug",
+            "short_description",
+            "price",
+            "compare_at_price",
+            "discount_percent",
+            "in_stock",
+            "category",
+            "primary_image",
+            "created_at",
         )
 
     def get_primary_image(self, product: Product) -> str | None:

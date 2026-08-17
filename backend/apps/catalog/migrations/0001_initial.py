@@ -14,7 +14,15 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="Category",
             fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("updated_at", models.DateTimeField(auto_now=True)),
                 ("name", models.CharField(max_length=120)),
@@ -24,12 +32,23 @@ class Migration(migrations.Migration):
                 ("is_active", models.BooleanField(default=True)),
                 ("display_order", models.PositiveSmallIntegerField(default=0)),
             ],
-            options={"verbose_name_plural": "categories", "ordering": ("display_order", "name")},
+            options={
+                "verbose_name_plural": "categories",
+                "ordering": ("display_order", "name"),
+            },
         ),
         migrations.CreateModel(
             name="Product",
             fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("updated_at", models.DateTimeField(auto_now=True)),
                 ("name", models.CharField(max_length=180)),
@@ -38,29 +57,74 @@ class Migration(migrations.Migration):
                 ("short_description", models.CharField(blank=True, max_length=280)),
                 ("description", models.TextField(blank=True)),
                 ("price", models.DecimalField(decimal_places=0, max_digits=12)),
-                ("compare_at_price", models.DecimalField(blank=True, decimal_places=0, max_digits=12, null=True)),
+                (
+                    "compare_at_price",
+                    models.DecimalField(
+                        blank=True, decimal_places=0, max_digits=12, null=True
+                    ),
+                ),
                 ("stock_quantity", models.PositiveIntegerField(default=0)),
-                ("status", models.CharField(choices=[("draft", "Draft"), ("published", "Published"), ("archived", "Archived")], default="draft", max_length=16)),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("draft", "Draft"),
+                            ("published", "Published"),
+                            ("archived", "Archived"),
+                        ],
+                        default="draft",
+                        max_length=16,
+                    ),
+                ),
                 ("is_featured", models.BooleanField(default=False)),
-                ("category", models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name="products", to="catalog.category")),
+                (
+                    "category",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="products",
+                        to="catalog.category",
+                    ),
+                ),
             ],
             options={"ordering": ("-created_at",)},
         ),
         migrations.CreateModel(
             name="ProductImage",
             fields=[
-                ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("updated_at", models.DateTimeField(auto_now=True)),
                 ("image_url", models.URLField()),
                 ("alt_text", models.CharField(blank=True, max_length=180)),
                 ("display_order", models.PositiveSmallIntegerField(default=0)),
-                ("product", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="images", to="catalog.product")),
+                (
+                    "product",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="images",
+                        to="catalog.product",
+                    ),
+                ),
             ],
             options={"ordering": ("display_order", "id")},
         ),
         migrations.AddConstraint(
             model_name="product",
-            constraint=models.CheckConstraint(condition=Q(("compare_at_price__isnull", True), ("compare_at_price__gt", F("price")), _connector="OR"), name="catalog_compare_price_greater_than_price"),
+            constraint=models.CheckConstraint(
+                condition=Q(
+                    ("compare_at_price__isnull", True),
+                    ("compare_at_price__gt", F("price")),
+                    _connector="OR",
+                ),
+                name="catalog_compare_price_greater_than_price",
+            ),
         ),
     ]

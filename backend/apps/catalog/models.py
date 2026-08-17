@@ -35,23 +35,30 @@ class Product(TimeStampedModel):
         PUBLISHED = "published", "Published"
         ARCHIVED = "archived", "Archived"
 
-    category = models.ForeignKey(Category, on_delete=models.PROTECT, related_name="products")
+    category = models.ForeignKey(
+        Category, on_delete=models.PROTECT, related_name="products"
+    )
     name = models.CharField(max_length=180)
     slug = models.SlugField(unique=True)
     sku = models.CharField(max_length=64, unique=True)
     short_description = models.CharField(max_length=280, blank=True)
     description = models.TextField(blank=True)
     price = models.DecimalField(max_digits=12, decimal_places=0)
-    compare_at_price = models.DecimalField(max_digits=12, decimal_places=0, blank=True, null=True)
+    compare_at_price = models.DecimalField(
+        max_digits=12, decimal_places=0, blank=True, null=True
+    )
     stock_quantity = models.PositiveIntegerField(default=0)
-    status = models.CharField(max_length=16, choices=Status.choices, default=Status.DRAFT)
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.DRAFT
+    )
     is_featured = models.BooleanField(default=False)
 
     class Meta:
         ordering = ("-created_at",)
         constraints = [
             models.CheckConstraint(
-                condition=Q(compare_at_price__isnull=True) | Q(compare_at_price__gt=F("price")),
+                condition=Q(compare_at_price__isnull=True)
+                | Q(compare_at_price__gt=F("price")),
                 name="catalog_compare_price_greater_than_price",
             ),
         ]
@@ -72,11 +79,15 @@ class Product(TimeStampedModel):
     def clean(self) -> None:
         super().clean()
         if self.compare_at_price and self.compare_at_price <= self.price:
-            raise ValidationError({"compare_at_price": "Compare-at price must be greater than price."})
+            raise ValidationError(
+                {"compare_at_price": "Compare-at price must be greater than price."}
+            )
 
 
 class ProductImage(TimeStampedModel):
-    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="images")
+    product = models.ForeignKey(
+        Product, on_delete=models.CASCADE, related_name="images"
+    )
     image = models.ImageField(upload_to="products/%Y/%m/", blank=True)
     image_url = models.URLField(blank=True)
     alt_text = models.CharField(max_length=180, blank=True)
