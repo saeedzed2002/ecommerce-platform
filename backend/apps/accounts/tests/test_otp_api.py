@@ -98,3 +98,19 @@ def test_otp_request_rejects_invalid_phone(client: APIClient) -> None:
     response = client.post("/api/v1/auth/otp/request/", {"phone": "123"})
 
     assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_admin_login_requires_an_administrator_and_returns_tokens(
+    client: APIClient,
+) -> None:
+    User.objects.create_superuser(phone="989121234567", password="safe-password")
+
+    response = client.post(
+        "/api/v1/auth/admin/login/",
+        {"phone": "989121234567", "password": "safe-password"},
+    )
+
+    assert response.status_code == 200
+    assert response.data["access"]
+    assert response.data["user"]["role"] == User.Role.ADMIN

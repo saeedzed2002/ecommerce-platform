@@ -6,8 +6,14 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenObtainPairView
 
-from .serializers import OTPRequestSerializer, OTPVerifySerializer, UserSerializer
+from .serializers import (
+    AdminTokenObtainPairSerializer,
+    OTPRequestSerializer,
+    OTPVerifySerializer,
+    UserSerializer,
+)
 from .services import OTPInvalid, OTPRateLimited, request_otp, verify_otp
 from .sms import SMSProviderError
 
@@ -15,6 +21,10 @@ from .sms import SMSProviderError
 class OTPUnavailable(APIException):
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     default_detail = "SMS delivery is temporarily unavailable."
+
+
+class AdminLoginView(TokenObtainPairView):
+    serializer_class = AdminTokenObtainPairSerializer
 
 
 class OTPRequestView(APIView):

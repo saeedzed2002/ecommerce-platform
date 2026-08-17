@@ -132,10 +132,13 @@ Authentication endpoints are versioned under `/api/v1/auth/`.
 | --- | --- |
 | `POST /api/v1/auth/otp/request/` | Send a six-digit code to an Iranian mobile number |
 | `POST /api/v1/auth/otp/verify/` | Verify the code, create the customer if needed, and return JWT tokens |
+| `POST /api/v1/auth/admin/login/` | Authenticate an `admin` user with phone number and password |
 | `POST /api/v1/auth/token/refresh/` | Rotate a refresh token and return a new access token |
 | `GET /api/v1/auth/me/` | Return the authenticated user; requires `Authorization: Bearer <access-token>` |
 
 The verification code is hashed in the database, expires after five minutes, is single-use, allows at most five failed attempts, and cannot be requested again for the same phone number for sixty seconds. The API also applies an anonymous-IP throttle.
+
+The storefront has one `ورود | ثبت‌نام` action: customers use the OTP flow, while administrators select the dedicated password form. Browser-session tokens are held in `sessionStorage` until the user signs out or closes the tab.
 
 ### SMS.ir configuration
 
