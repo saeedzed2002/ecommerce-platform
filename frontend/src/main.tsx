@@ -56,6 +56,16 @@ type Cart = {
   item_count: number;
   subtotal: string;
 };
+type Address = {
+  id: number;
+  full_name: string;
+  phone: string;
+  province: string;
+  city: string;
+  address_line: string;
+  postal_code: string;
+  is_default: boolean;
+};
 type AuthUser = { id: number; phone: string; role: "customer" | "admin" };
 type AuthResponse = { access: string; refresh: string; user: AuthUser };
 type Route =
@@ -63,6 +73,7 @@ type Route =
   | { name: "catalog"; category: string | null }
   | { name: "product"; slug: string }
   | { name: "cart" }
+  | { name: "checkout" }
   | { name: "not-found" };
 const apiBaseUrl = (
   import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000"
@@ -77,6 +88,8 @@ function getRoute(): Route {
   const parts = location.pathname.split("/").filter(Boolean);
   if (!parts.length) return { name: "home" };
   if (parts[0] === "cart" && parts.length === 1) return { name: "cart" };
+  if (parts[0] === "checkout" && parts.length === 1)
+    return { name: "checkout" };
   if (parts[0] !== "products") return { name: "not-found" };
   if (parts.length === 1)
     return {
@@ -829,12 +842,225 @@ function CartPage({
             <span>مبلغ قابل پرداخت</span>
             <strong>{formatPrice(cart.subtotal)} تومان</strong>
           </div>
-          <button className="checkout-button" type="button">
+          <button
+            className="checkout-button"
+            type="button"
+            onClick={() => navigate("/checkout")}
+          >
             ادامه ثبت سفارش
           </button>
-          <p>ثبت سفارش و پرداخت در مرحلهٔ بعدی پیاده‌سازی می‌شود.</p>
+          <p>در مرحله بعد، آدرس تحویل را انتخاب می‌کنی.</p>
         </aside>
       </section>
+    </main>
+  );
+}
+
+function CheckoutPage({
+  cart,
+  onOrderCreated,
+}: {
+  cart: Cart | null;
+  onOrderCreated: () => void;
+}) {
+  const [addresses, setAddresses] = useState<Address[]>([]);
+  const [selected, setSelected] = useState<number | null>(null);
+  const [message, setMessage] = useState("");
+  const [pending, setPending] = useState(false);
+  const [form, setForm] = useState({
+    full_name: "",
+    phone: "",
+    province: "",
+    city: "",
+    address_line: "",
+    postal_code: "",
+  });
+  const headers = () => ({
+    Authorization: `Bearer ${getAccessToken()}`,
+    "Content-Type": "application/json",
+  });
+  useEffect(() => {
+    fetch(`${apiBaseUrl}/api/v1/orders/addresses/`, { headers: headers() })
+      .then((response) => (response.ok ? response.json() : Promise.reject()))
+      .then((data: Address[]) => {
+        setAddresses(data);
+        setSelected(
+          data.find((item) => item.is_default)?.id ?? data[0]?.id ?? null,
+        );
+      })
+      .catch(() => setMessage("دریافت آدرس‌ها ناموفق بود."));
+  }, []);
+  async function createAddress(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending(true);
+    setMessage("");
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/v1/orders/addresses/`, {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify({ ...form, is_default: !addresses.length }),
+      });
+      if (!response.ok) throw new Error(await getError(response));
+      const address = (await response.json()) as Address;
+      setAddresses((items) => [address, ...items]);
+      setSelected(address.id);
+      setMessage("آدرس ذخیره شد.");
+    } catch (reason) {
+      setMessage(
+        reason instanceof Error ? reason.message : "ذخیره آدرس ناموفق بود.",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+  async function checkout() {
+    if (!selected) {
+      setMessage("یک آدرس تحویل انتخاب کن.");
+      return;
+    }
+    setPending(true);
+    setMessage("");
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/v1/orders/checkout/`, {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify({ address_id: selected }),
+      });
+      if (!response.ok) throw new Error(await getError(response));
+      onOrderCreated();
+      setMessage("سفارش با موفقیت ثبت شد. پرداخت در مرحله بعد اضافه می‌شود.");
+    } catch (reason) {
+      setMessage(
+        reason instanceof Error ? reason.message : "ثبت سفارش ناموفق بود.",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+  if (!cart?.items.length && !message)
+    return (
+      <PageState
+        title="سبد خرید خالی است"
+        text="برای ثبت سفارش ابتدا محصولی به سبد اضافه کن."
+      />
+    );
+  return (
+    <main className="checkout-page">
+      <div className="page-heading">
+        <p className="eyebrow">تکمیل خرید</p>
+        <h1>نشانی تحویل</h1>
+        <p>یک آدرس ذخیره‌شده را انتخاب کن یا نشانی جدیدی بساز.</p>
+      </div>
+      <div className="checkout-layout">
+        <section className="address-section">
+          <h2>آدرس‌های شما</h2>
+          {addresses.map((address) => (
+            <label
+              className={
+                selected === address.id
+                  ? "address-card selected"
+                  : "address-card"
+              }
+              key={address.id}
+            >
+              <input
+                type="radio"
+                checked={selected === address.id}
+                onChange={() => setSelected(address.id)}
+              />
+              <span>
+                <strong>{address.full_name}</strong>
+                <small>
+                  {address.province}، {address.city} — {address.address_line}
+                </small>
+                <small dir="ltr">{address.phone}</small>
+              </span>
+            </label>
+          ))}
+          <form className="address-form" onSubmit={createAddress}>
+            <h2>افزودن آدرس جدید</h2>
+            <input
+              placeholder="نام و نام خانوادگی"
+              value={form.full_name}
+              onChange={(event) =>
+                setForm({ ...form, full_name: event.target.value })
+              }
+              required
+            />
+            <input
+              placeholder="شماره موبایل"
+              value={form.phone}
+              onChange={(event) =>
+                setForm({ ...form, phone: event.target.value })
+              }
+              required
+            />
+            <div>
+              <input
+                placeholder="استان"
+                value={form.province}
+                onChange={(event) =>
+                  setForm({ ...form, province: event.target.value })
+                }
+                required
+              />
+              <input
+                placeholder="شهر"
+                value={form.city}
+                onChange={(event) =>
+                  setForm({ ...form, city: event.target.value })
+                }
+                required
+              />
+            </div>
+            <textarea
+              placeholder="نشانی کامل"
+              value={form.address_line}
+              onChange={(event) =>
+                setForm({ ...form, address_line: event.target.value })
+              }
+              required
+            />
+            <input
+              placeholder="کد پستی"
+              value={form.postal_code}
+              onChange={(event) =>
+                setForm({ ...form, postal_code: event.target.value })
+              }
+              required
+            />
+            <button type="submit" disabled={pending}>
+              ذخیره آدرس
+            </button>
+          </form>
+        </section>
+        <aside className="cart-summary">
+          <h2>جمع سفارش</h2>
+          <div>
+            <span>جمع کالاها</span>
+            <strong>
+              {cart ? `${formatPrice(cart.subtotal)} تومان` : "—"}
+            </strong>
+          </div>
+          <hr />
+          <div className="cart-total">
+            <span>مبلغ سفارش</span>
+            <strong>
+              {cart ? `${formatPrice(cart.subtotal)} تومان` : "—"}
+            </strong>
+          </div>
+          <button
+            className="checkout-button"
+            type="button"
+            disabled={pending || !cart?.items.length}
+            onClick={checkout}
+          >
+            ثبت سفارش
+          </button>
+          <p>پرداخت آنلاین هنوز فعال نیست.</p>
+          {message && <p className="cart-message">{message}</p>}
+        </aside>
+      </div>
     </main>
   );
 }
@@ -1105,6 +1331,17 @@ function App() {
           mutateCart(`items/${itemId}/`, "PATCH", { quantity })
         }
         removeItem={(itemId) => mutateCart(`items/${itemId}/`, "DELETE")}
+      />
+    ) : route.name === "checkout" ? (
+      <CheckoutPage
+        cart={cart}
+        onOrderCreated={() => {
+          setCart((current) =>
+            current
+              ? { ...current, items: [], item_count: 0, subtotal: "0" }
+              : null,
+          );
+        }}
       />
     ) : (
       <PageState title="صفحه پیدا نشد" text="نشانی واردشده معتبر نیست." />
