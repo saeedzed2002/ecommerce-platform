@@ -11,6 +11,16 @@ permissions:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
     env:
       DJANGO_DEBUG: "false"
       DJANGO_SECRET_KEY: ci-only-django-secret-key-not-for-production
@@ -26,6 +36,9 @@ jobs:
       - run: ruff check .
       - run: ruff format --check .
       - run: pytest -q
+      - run: pytest apps/chat/tests/test_realtime_redis.py -q --ds=config.settings.integration
+        env:
+          REDIS_URL: redis://127.0.0.1:6379/15
       - run: python manage.py check
   frontend:
     runs-on: ubuntu-latest

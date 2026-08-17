@@ -98,6 +98,45 @@ def test_admin_can_list_conversations_and_reply(
 
 
 @pytest.mark.django_db
+def test_message_client_identifier_makes_rest_retries_idempotent(
+    customer_client: APIClient, customer: User
+) -> None:
+    conversation = Conversation.objects.create(customer=customer)
+    payload = {
+        "body": "Retry-safe message",
+        "client_message_id": "31a2143d-faa0-4747-97c3-49a91a6a15c2",
+    }
+
+    first = customer_client.post(
+        f"/api/v1/chat/conversations/{conversation.id}/messages/", payload
+    )
+    second = customer_client.post(
+        f"/api/v1/chat/conversations/{conversation.id}/messages/", payload
+    )
+
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert first.data["id"] == second.data["id"]
+    assert Message.objects.filter(conversation=conversation).count() == 1
+
+
+@pytest.mark.django_db
+def test_admin_can_assign_and_resolve_a_conversation(
+    admin_client: APIClient, customer: User, admin: User
+) -> None:
+    conversation = Conversation.objects.create(customer=customer)
+
+    response = admin_client.patch(
+        f"/api/v1/chat/conversations/{conversation.id}/",
+        {"assigned_admin": admin.id, "status": Conversation.Status.RESOLVED},
+    )
+
+    assert response.status_code == 200
+    assert response.data["assigned_admin"] == admin.id
+    assert response.data["status"] == Conversation.Status.RESOLVED
+
+
+@pytest.mark.django_db
 def test_reading_messages_marks_other_partys_messages_as_read(
     customer_client: APIClient, customer: User, admin: User
 ) -> None:

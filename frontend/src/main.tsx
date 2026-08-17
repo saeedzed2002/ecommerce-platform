@@ -77,6 +77,11 @@ type OrderItem = {
   quantity: number;
   line_total: string;
 };
+type OrderStatusEvent = {
+  from_status: string;
+  to_status: string;
+  created_at: string;
+};
 type Order = {
   number: string;
   status: string;
@@ -84,6 +89,7 @@ type Order = {
   expires_at: string | null;
   created_at: string;
   items: OrderItem[];
+  status_events: OrderStatusEvent[];
 };
 type OrdersResponse = {
   count: number;
@@ -103,14 +109,20 @@ type Conversation = {
   id: string;
   customer_phone: string;
   last_message_at: string | null;
+  status: "open" | "resolved" | "closed";
+  assigned_admin: number | null;
+  assigned_admin_phone: string | null;
+  unread_count: number;
   created_at: string;
 };
 type ChatMessage = {
   id: number;
   body: string;
   sender_role: "customer" | "admin";
+  client_message_id: string | null;
   created_at: string;
   read_at: string | null;
+  delivery_status?: "sending" | "failed";
 };
 type ChatMessagesResponse = {
   count: number;
@@ -334,7 +346,8 @@ async function fetchAuthenticated(path: string, init: RequestInit = {}) {
 
   const headers = new Headers(init.headers);
   headers.set("Authorization", `Bearer ${auth.access}`);
-  let response = await fetch(`${apiBaseUrl}${path}`, { ...init, headers });
+  const url = path.startsWith("http") ? path : `${apiBaseUrl}${path}`;
+  let response = await fetch(url, { ...init, headers });
   if (response.status !== 401) return response;
 
   const nextAuth = await refreshAccessToken();
@@ -344,7 +357,7 @@ async function fetchAuthenticated(path: string, init: RequestInit = {}) {
   }
 
   headers.set("Authorization", `Bearer ${nextAuth.access}`);
-  response = await fetch(`${apiBaseUrl}${path}`, { ...init, headers });
+  response = await fetch(url, { ...init, headers });
   return response;
 }
 
@@ -1374,6 +1387,21 @@ function ProfilePage({
                     </li>
                   ))}
                 </ul>
+                {!!order.status_events.length && (
+                  <ol className="order-status-history">
+                    {order.status_events.map((event, index) => (
+                      <li key={`${event.created_at}-${index}`}>
+                        <span>
+                          {orderStatusLabels[event.to_status] ??
+                            event.to_status}
+                        </span>
+                        <time dateTime={event.created_at}>
+                          {formatDate(event.created_at)}
+                        </time>
+                      </li>
+                    ))}
+                  </ol>
+                )}
               </article>
             ))}
           </div>
@@ -1642,20 +1670,35 @@ function ChatThread({
   const [pending, setPending] = useState(false);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState("");
+  const [nextPage, setNextPage] = useState<string | null>(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const reconnectAttemptRef = useRef(0);
 
   function appendMessage(message: ChatMessage) {
-    setMessages((current) =>
-      current.some((item) => item.id === message.id)
+    setMessages((current) => {
+      const optimisticIndex = message.client_message_id
+        ? current.findIndex(
+            (item) => item.client_message_id === message.client_message_id,
+          )
+        : -1;
+      if (optimisticIndex >= 0) {
+        const next = [...current];
+        next[optimisticIndex] = message;
+        return next;
+      }
+      return current.some((item) => item.id === message.id)
         ? current
-        : [...current, message],
-    );
+        : [...current, message];
+    });
   }
 
   useEffect(() => {
     setLoading(true);
     setError("");
     setMessages([]);
+    setNextPage(null);
     fetchAuthenticated(
       `/api/v1/chat/conversations/${conversation.id}/messages/`,
     )
@@ -1663,7 +1706,10 @@ function ChatThread({
         if (!response.ok) throw new Error(await getError(response));
         return response.json() as Promise<ChatMessagesResponse>;
       })
-      .then((data) => setMessages(data.results))
+      .then((data) => {
+        setMessages([...data.results].reverse());
+        setNextPage(data.next);
+      })
       .catch((reason) =>
         setError(
           reason instanceof Error
@@ -1677,38 +1723,62 @@ function ChatThread({
   useEffect(() => {
     const accessToken = getAccessToken();
     if (!accessToken) return;
-    let socket: WebSocket;
-    try {
-      socket = new WebSocket(chatSocketUrl(conversation.id), [
-        "access_token",
-        accessToken,
-      ]);
-    } catch {
-      setConnected(false);
-      return;
-    }
-    socketRef.current = socket;
-    socket.onopen = () => setConnected(true);
-    socket.onmessage = (event) => {
+    let disposed = false;
+    const connect = () => {
+      let socket: WebSocket;
       try {
-        const payload = JSON.parse(event.data) as {
-          type: string;
-          message?: ChatMessage;
-          detail?: string;
-        };
-        if (payload.type === "message" && payload.message)
-          appendMessage(payload.message);
-        if (payload.type === "error")
-          setError(payload.detail ?? "ارسال پیام ناموفق بود.");
+        socket = new WebSocket(chatSocketUrl(conversation.id), [
+          "access_token",
+          accessToken,
+        ]);
       } catch {
-        setError("پاسخ نامعتبر از سرویس گفت‌وگو دریافت شد.");
+        scheduleReconnect();
+        return;
       }
+      socketRef.current = socket;
+      socket.onopen = () => {
+        reconnectAttemptRef.current = 0;
+        setConnected(true);
+      };
+      socket.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data) as {
+            type: string;
+            message?: ChatMessage;
+            detail?: string;
+          };
+          if (payload.type === "message" && payload.message)
+            appendMessage(payload.message);
+          if (payload.type === "error")
+            setError(payload.detail ?? "ارسال پیام ناموفق بود.");
+        } catch {
+          setError("پاسخ نامعتبر از سرویس گفت‌وگو دریافت شد.");
+        }
+      };
+      socket.onclose = () => {
+        if (socketRef.current === socket) socketRef.current = null;
+        setConnected(false);
+        scheduleReconnect();
+      };
+      socket.onerror = () => socket.close();
     };
-    socket.onclose = () => setConnected(false);
-    socket.onerror = () => setConnected(false);
+    const scheduleReconnect = () => {
+      if (disposed || reconnectTimerRef.current !== null) return;
+      const delay = Math.min(1000 * 2 ** reconnectAttemptRef.current, 30000);
+      reconnectAttemptRef.current += 1;
+      reconnectTimerRef.current = window.setTimeout(() => {
+        reconnectTimerRef.current = null;
+        connect();
+      }, delay);
+    };
+    connect();
     return () => {
-      socket.close();
-      if (socketRef.current === socket) socketRef.current = null;
+      disposed = true;
+      if (reconnectTimerRef.current !== null)
+        window.clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+      socketRef.current?.close();
+      socketRef.current = null;
     };
   }, [conversation.id]);
 
@@ -1719,9 +1789,22 @@ function ChatThread({
     setPending(true);
     setError("");
     setBody("");
+    const clientMessageId = crypto.randomUUID();
+    const optimisticMessage: ChatMessage = {
+      id: -Date.now(),
+      body: text,
+      sender_role: user.role,
+      client_message_id: clientMessageId,
+      created_at: new Date().toISOString(),
+      read_at: null,
+      delivery_status: "sending",
+    };
+    appendMessage(optimisticMessage);
     const socket = socketRef.current;
     if (socket?.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ body: text }));
+      socket.send(
+        JSON.stringify({ body: text, client_message_id: clientMessageId }),
+      );
       setPending(false);
       return;
     }
@@ -1731,18 +1814,47 @@ function ChatThread({
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ body: text }),
+          body: JSON.stringify({
+            body: text,
+            client_message_id: clientMessageId,
+          }),
         },
       );
       if (!response.ok) throw new Error(await getError(response));
       appendMessage((await response.json()) as ChatMessage);
     } catch (reason) {
-      setBody(text);
+      setMessages((current) =>
+        current.map((message) =>
+          message.client_message_id === clientMessageId
+            ? { ...message, delivery_status: "failed" }
+            : message,
+        ),
+      );
       setError(
         reason instanceof Error ? reason.message : "ارسال پیام ناموفق بود.",
       );
     } finally {
       setPending(false);
+    }
+  }
+
+  async function loadOlderMessages() {
+    if (!nextPage || loadingOlder) return;
+    setLoadingOlder(true);
+    try {
+      const response = await fetchAuthenticated(nextPage);
+      if (!response.ok) throw new Error(await getError(response));
+      const data = (await response.json()) as ChatMessagesResponse;
+      setMessages((current) => [...data.results.reverse(), ...current]);
+      setNextPage(data.next);
+    } catch (reason) {
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : "دریافت پیام‌های قدیمی ناموفق بود.",
+      );
+    } finally {
+      setLoadingOlder(false);
     }
   }
 
@@ -1766,6 +1878,16 @@ function ChatThread({
         </span>
       </div>
       <div className="chat-messages" aria-live="polite">
+        {nextPage && !loading && (
+          <button
+            className="chat-load-older"
+            type="button"
+            disabled={loadingOlder}
+            onClick={loadOlderMessages}
+          >
+            {loadingOlder ? "در حال دریافت…" : "پیام‌های قدیمی‌تر"}
+          </button>
+        )}
         {loading ? (
           <p className="orders-state">در حال دریافت پیام‌ها…</p>
         ) : !messages.length ? (
@@ -1784,6 +1906,15 @@ function ChatThread({
               <time dateTime={message.created_at}>
                 {formatDate(message.created_at)}
               </time>
+              {message.delivery_status && (
+                <span
+                  className={`chat-message-status ${message.delivery_status}`}
+                >
+                  {message.delivery_status === "sending"
+                    ? "در حال ارسال"
+                    : "ارسال ناموفق"}
+                </span>
+              )}
             </article>
           ))
         )}
@@ -1895,6 +2026,7 @@ function AdminChatPage({ user }: { user: AuthUser | null }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [updating, setUpdating] = useState(false);
   useEffect(() => {
     if (user?.role !== "admin") return;
     fetchAuthenticated("/api/v1/chat/conversations/")
@@ -1915,6 +2047,34 @@ function AdminChatPage({ user }: { user: AuthUser | null }) {
       )
       .finally(() => setLoading(false));
   }, [user?.id, user?.role]);
+  async function updateConversation(
+    conversation: Conversation,
+    patch: Partial<Pick<Conversation, "status" | "assigned_admin">>,
+  ) {
+    setUpdating(true);
+    setError("");
+    try {
+      const response = await fetchAuthenticated(
+        `/api/v1/chat/conversations/${conversation.id}/`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(patch),
+        },
+      );
+      if (!response.ok) throw new Error(await getError(response));
+      const updated = (await response.json()) as Conversation;
+      setConversations((items) =>
+        items.map((item) => (item.id === updated.id ? updated : item)),
+      );
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : "به‌روزرسانی ناموفق بود.",
+      );
+    } finally {
+      setUpdating(false);
+    }
+  }
   if (user?.role !== "admin")
     return (
       <PageState
@@ -1954,6 +2114,15 @@ function AdminChatPage({ user }: { user: AuthUser | null }) {
               >
                 <strong dir="ltr">{conversation.customer_phone}</strong>
                 <span>
+                  {conversation.unread_count
+                    ? `${conversation.unread_count} پیام خوانده‌نشده`
+                    : conversation.status === "open"
+                      ? "باز"
+                      : conversation.status === "resolved"
+                        ? "حل‌شده"
+                        : "بسته"}
+                </span>
+                <span>
                   {conversation.last_message_at
                     ? formatDate(conversation.last_message_at)
                     : "بدون پیام"}
@@ -1961,7 +2130,40 @@ function AdminChatPage({ user }: { user: AuthUser | null }) {
               </button>
             ))}
           </aside>
-          {selected && <ChatThread conversation={selected} user={user} />}
+          {selected && (
+            <div>
+              <div className="conversation-management">
+                <button
+                  type="button"
+                  disabled={updating}
+                  onClick={() =>
+                    updateConversation(selected, {
+                      assigned_admin:
+                        selected.assigned_admin === user.id ? null : user.id,
+                    })
+                  }
+                >
+                  {selected.assigned_admin === user.id
+                    ? "برداشتن از من"
+                    : "تخصیص به من"}
+                </button>
+                <select
+                  value={selected.status}
+                  disabled={updating}
+                  onChange={(event) =>
+                    updateConversation(selected, {
+                      status: event.target.value as Conversation["status"],
+                    })
+                  }
+                >
+                  <option value="open">باز</option>
+                  <option value="resolved">حل‌شده</option>
+                  <option value="closed">بسته</option>
+                </select>
+              </div>
+              <ChatThread conversation={selected} user={user} />
+            </div>
+          )}
         </div>
       )}
     </main>

@@ -10,7 +10,7 @@ from rest_framework.exceptions import ValidationError
 from apps.cart.models import CartItem
 from apps.catalog.models import Product
 
-from .models import Address, Order, OrderItem, PaymentAttempt
+from .models import Address, Order, OrderItem, OrderStatusEvent, PaymentAttempt
 
 
 @transaction.atomic
@@ -70,6 +70,7 @@ def create_order_from_cart(*, user, address_id: int) -> Order:
         shipping_address_line=address.address_line,
         shipping_postal_code=address.postal_code,
     )
+    OrderStatusEvent.objects.create(order=order, to_status=Order.Status.PENDING)
     OrderItem.objects.bulk_create(
         [
             OrderItem(
@@ -118,6 +119,7 @@ def transition_order_status(*, order_number, target_status: str) -> Order:
             {"status": f"Cannot change {order.status} to {target_status}."}
         )
 
+    previous_status = order.status
     if order.status == Order.Status.PENDING:
         _restore_order_stock(order)
         PaymentAttempt.objects.filter(
@@ -132,6 +134,11 @@ def transition_order_status(*, order_number, target_status: str) -> Order:
         )
     order.status = target_status
     order.save(update_fields=["status", "updated_at"])
+    OrderStatusEvent.objects.create(
+        order=order,
+        from_status=previous_status,
+        to_status=target_status,
+    )
     return order
 
 

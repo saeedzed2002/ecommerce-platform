@@ -32,11 +32,35 @@ def get_conversation_for_user(*, user, conversation_id) -> Conversation:
 
 
 @transaction.atomic
-def create_message(*, user, conversation_id, body: str) -> Message:
-    conversation = get_conversation_for_user(user=user, conversation_id=conversation_id)
-    message = Message.objects.create(conversation=conversation, sender=user, body=body)
+def create_message(
+    *, user, conversation_id, body: str, client_message_id=None
+) -> Message:
+    queryset = Conversation.objects.select_for_update().select_related("customer")
+    if not is_platform_admin(user):
+        queryset = queryset.filter(customer=user)
+    conversation = queryset.filter(pk=conversation_id).first()
+    if conversation is None:
+        raise NotFound("Conversation not found.")
+    if client_message_id is not None:
+        existing = Message.objects.filter(
+            conversation=conversation, client_message_id=client_message_id
+        ).first()
+        if existing is not None:
+            if existing.sender_id != user.id:
+                raise PermissionDenied("Message identifier belongs to another user.")
+            return existing
+    message = Message.objects.create(
+        conversation=conversation,
+        sender=user,
+        body=body,
+        client_message_id=client_message_id,
+    )
     conversation.last_message_at = message.created_at
-    conversation.save(update_fields=["last_message_at", "updated_at"])
+    update_fields = ["last_message_at", "updated_at"]
+    if conversation.status != Conversation.Status.OPEN:
+        conversation.status = Conversation.Status.OPEN
+        update_fields.append("status")
+    conversation.save(update_fields=update_fields)
     return message
 
 
@@ -45,6 +69,9 @@ def message_payload(message: Message) -> dict:
         "id": message.id,
         "body": message.body,
         "sender_role": message.sender.role,
+        "client_message_id": (
+            str(message.client_message_id) if message.client_message_id else None
+        ),
         "created_at": message.created_at.isoformat(),
         "read_at": message.read_at.isoformat() if message.read_at else None,
     }

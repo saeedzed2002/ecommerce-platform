@@ -10,7 +10,7 @@ from rest_framework.exceptions import NotFound, ValidationError
 
 from apps.cart.models import CartItem
 
-from .models import Order, PaymentAttempt
+from .models import Order, OrderStatusEvent, PaymentAttempt
 
 
 class ZarinpalGatewayError(Exception):
@@ -198,6 +198,11 @@ def verify_zarinpal_payment(*, authority: str) -> PaymentVerification:
             return PaymentVerification(order=order, paid=False, reference_id="")
         order.status = Order.Status.PAID
         order.save(update_fields=["status", "updated_at"])
+        OrderStatusEvent.objects.create(
+            order=order,
+            from_status=Order.Status.PENDING,
+            to_status=Order.Status.PAID,
+        )
         CartItem.objects.select_for_update().filter(
             cart__user_id=order.user_id
         ).delete()

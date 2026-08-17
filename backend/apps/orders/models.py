@@ -87,6 +87,21 @@ class PaymentAttempt(TimeStampedModel):
         return f"{self.provider} payment for {self.order.number}"
 
 
+class OrderStatusEvent(models.Model):
+    order = models.ForeignKey(
+        Order, on_delete=models.CASCADE, related_name="status_events"
+    )
+    from_status = models.CharField(max_length=16, blank=True)
+    to_status = models.CharField(max_length=16, choices=Order.Status.choices)
+    changed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("created_at", "id")
+
+
 class OrderItem(models.Model):
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="items")
     product = models.ForeignKey(

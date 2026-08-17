@@ -34,9 +34,16 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
                 self.scope["user"],
                 self.conversation_id,
                 serializer.validated_data["body"],
+                serializer.validated_data.get("client_message_id"),
             )
         except APIException as error:
-            await self.send_json({"type": "error", "detail": error.detail})
+            await self.send_json(
+                {
+                    "type": "error",
+                    "detail": error.detail,
+                    "client_message_id": content.get("client_message_id"),
+                }
+            )
             return
         await self.channel_layer.group_send(
             self.group_name,
@@ -55,10 +62,13 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
         return True
 
     @database_sync_to_async
-    def _create_message(self, user, conversation_id, body: str) -> dict:
+    def _create_message(
+        self, user, conversation_id, body: str, client_message_id
+    ) -> dict:
         message = create_message(
             user=user,
             conversation_id=conversation_id,
             body=body,
+            client_message_id=client_message_id,
         )
         return message_payload(message)

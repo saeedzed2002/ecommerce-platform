@@ -3,7 +3,7 @@ from rest_framework import serializers
 
 from apps.accounts.phone import normalize_iranian_mobile
 
-from .models import Address, Order, OrderItem
+from .models import Address, Order, OrderItem, OrderStatusEvent
 
 
 class AddressSerializer(serializers.ModelSerializer):
@@ -46,8 +46,15 @@ class OrderItemSerializer(serializers.ModelSerializer):
         )
 
 
+class OrderStatusEventSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = OrderStatusEvent
+        fields = ("from_status", "to_status", "created_at")
+
+
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
+    status_events = OrderStatusEventSerializer(many=True, read_only=True)
 
     class Meta:
         model = Order
@@ -58,6 +65,7 @@ class OrderSerializer(serializers.ModelSerializer):
             "subtotal",
             "expires_at",
             "items",
+            "status_events",
             "created_at",
         )
 

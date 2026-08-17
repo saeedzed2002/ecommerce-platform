@@ -49,7 +49,9 @@ class OrderListAPIView(ListAPIView):
     serializer_class = OrderSerializer
 
     def get_queryset(self):
-        return Order.objects.filter(user=self.request.user).prefetch_related("items")
+        return Order.objects.filter(user=self.request.user).prefetch_related(
+            "items", "status_events"
+        )
 
 
 class AdminOrderListAPIView(ListAPIView):
@@ -57,7 +59,9 @@ class AdminOrderListAPIView(ListAPIView):
     serializer_class = AdminOrderSerializer
 
     def get_queryset(self):
-        queryset = Order.objects.select_related("user").prefetch_related("items")
+        queryset = Order.objects.select_related("user").prefetch_related(
+            "items", "status_events"
+        )
         requested_status = self.request.query_params.get("status", "").strip()
         if requested_status:
             valid_statuses = {choice for choice, _ in Order.Status.choices}
