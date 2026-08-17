@@ -24,6 +24,7 @@ jobs:
           python-version: "3.13"
       - run: pip install -r requirements/dev.txt
       - run: ruff check .
+      - run: ruff format --check .
       - run: python manage.py check
   frontend:
     runs-on: ubuntu-latest
