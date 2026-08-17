@@ -26,6 +26,7 @@ INSTALLED_APPS = [
     "channels",
     "corsheaders",
     "rest_framework",
+    "apps.accounts",
     "apps.catalog",
 ]
 MIDDLEWARE = [
@@ -64,6 +65,7 @@ USE_I18N = True
 USE_TZ = True
 STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+AUTH_USER_MODEL = "accounts.User"
 CORS_ALLOWED_ORIGINS = env.list(
     "CORS_ALLOWED_ORIGINS", default=["http://localhost:5173"]
 )

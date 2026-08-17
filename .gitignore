@@ -4,6 +4,7 @@
 __pycache__/
 *.py[cod]
 *.sqlite3
+.local-backups/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
