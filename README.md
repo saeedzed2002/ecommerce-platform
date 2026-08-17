@@ -1,6 +1,6 @@
 # Ecommerce Platform
 
-A production-oriented e-commerce platform built as a monorepo. It currently provides a Django catalog API, a React storefront, product administration, PostgreSQL persistence, and MinIO-backed product image uploads.
+A production-oriented e-commerce platform built as a monorepo. It currently provides a Django catalog API, OTP-based authentication, a React storefront, product administration, PostgreSQL persistence, and MinIO-backed product image uploads.
 
 ## Current status
 
@@ -10,9 +10,10 @@ The catalog milestone is complete and merged into `main`.
 - Public API: versioned catalog endpoints under `/api/v1/`.
 - Storefront: responsive Persian (`RTL`) landing page that reads catalog data from the API.
 - Media: product images uploaded from the Django admin panel are stored in MinIO.
+- Accounts: phone-number-based custom user model, OTP verification API, JWT access and refresh tokens, rate limiting, and single-use verification challenges.
 - Quality: backend linting, formatting checks, tests, Django system checks, and frontend builds run in CI.
 
-The project is still pre-release (`v0.1.0`); a complete checkout flow, authentication, payments, and chat have not been implemented yet.
+The project is still pre-release (`v0.1.0`); a complete checkout flow, payments, and chat have not been implemented yet.
 
 ## Architecture
 
@@ -122,6 +123,31 @@ Only published products in active categories are returned by the public API. Pro
 4. In the `Product images` inline section, choose an image file from the local computer and save the product.
 
 The image object is stored in MinIO; PostgreSQL stores only its object key and product metadata.
+
+## OTP authentication API
+
+Authentication endpoints are versioned under `/api/v1/auth/`.
+
+| Endpoint | Description |
+| --- | --- |
+| `POST /api/v1/auth/otp/request/` | Send a six-digit code to an Iranian mobile number |
+| `POST /api/v1/auth/otp/verify/` | Verify the code, create the customer if needed, and return JWT tokens |
+| `POST /api/v1/auth/token/refresh/` | Rotate a refresh token and return a new access token |
+| `GET /api/v1/auth/me/` | Return the authenticated user; requires `Authorization: Bearer <access-token>` |
+
+The verification code is hashed in the database, expires after five minutes, is single-use, allows at most five failed attempts, and cannot be requested again for the same phone number for sixty seconds. The API also applies an anonymous-IP throttle.
+
+### SMS.ir configuration
+
+OTP uses the `SMS.ir` bulk endpoint because this development account has no approved verification template. Put the replacement API key and the sending line number only in the untracked `.env` file:
+
+```dotenv
+SMSIR_API_KEY=replace-with-a-new-rotated-key
+SMSIR_LINE_NUMBER=your-sending-line-number
+SMSIR_BULK_ENDPOINT=https://api.sms.ir/v1/send/bulk
+```
+
+Do not commit or paste an API key into GitHub, a ticket, or chat. A non-service line cannot deliver to recipients who have blocked promotional SMS. Before a public launch, switch to the `SMS.ir` verification endpoint with an approved template and service line.
 
 ## Quality checks and tests
 

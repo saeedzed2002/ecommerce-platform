@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.utils.translation import gettext_lazy as _
 
-from .models import User
+from .models import OTPChallenge, User
 
 
 @admin.register(User)
@@ -46,3 +46,23 @@ class CustomUserAdmin(UserAdmin):
             },
         ),
     )
+
+
+@admin.register(OTPChallenge)
+class OTPChallengeAdmin(admin.ModelAdmin):
+    list_display = ("phone", "created_at", "expires_at", "attempts", "verified_at")
+    list_filter = ("verified_at", "invalidated_at")
+    readonly_fields = (
+        "phone",
+        "code_hash",
+        "expires_at",
+        "attempts",
+        "created_at",
+        "verified_at",
+        "invalidated_at",
+        "provider_message_id",
+    )
+    search_fields = ("phone",)
+
+    def has_add_permission(self, request):
+        return False

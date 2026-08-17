@@ -1,7 +1,9 @@
 import os
 from copy import deepcopy
 
-os.environ.setdefault("DJANGO_SECRET_KEY", "test-only-secret-key")
+os.environ.setdefault(
+    "DJANGO_SECRET_KEY", "test-only-secret-key-with-at-least-32-bytes"
+)
 
 from .base import *
 
@@ -11,6 +13,12 @@ DATABASES = {
         "NAME": ":memory:",
     },
 }
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "otp-tests",
+    }
+}
 
 STORAGES = deepcopy(STORAGES)
 STORAGES["default"]["OPTIONS"].update(
@@ -19,3 +27,5 @@ STORAGES["default"]["OPTIONS"].update(
         "url_protocol": "https:",
     },
 )
+SIMPLE_JWT = deepcopy(SIMPLE_JWT)
+SIMPLE_JWT["SIGNING_KEY"] = "test-jwt-signing-key-with-at-least-32-bytes"
