@@ -1,0 +1,4 @@
+[lint.per-file-ignores]
+"apps/catalog/admin.py" = ["RUF012"]
+"apps/catalog/migrations/*.py" = ["RUF012"]
+"apps/catalog/models.py" = ["RUF012"]
