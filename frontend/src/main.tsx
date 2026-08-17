@@ -334,7 +334,7 @@ function refreshAccessToken(): Promise<AuthResponse | null> {
   return refreshPromise;
 }
 function chatSocketUrl(conversationId: string) {
-  const url = new URL(apiBaseUrl);
+  const url = new URL(apiBaseUrl || window.location.origin);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   url.pathname = `/ws/chat/${conversationId}/`;
   url.search = "";

@@ -1,0 +1,55 @@
+services:
+  rabbitmq:
+    ports: !reset []
+
+  minio:
+    ports: !reset []
+
+  backend:
+    build:
+      context: ./backend
+      target: production
+    env_file: !override
+      - ${ENV_FILE:-.env.production}
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.production
+    volumes: !reset []
+    ports: !reset []
+    command:
+      - gunicorn
+      - config.asgi:application
+      - -k
+      - uvicorn.workers.UvicornWorker
+      - --bind
+      - 0.0.0.0:8000
+  celery-worker:
+    build:
+      context: ./backend
+      target: production
+    env_file: !override
+      - ${ENV_FILE:-.env.production}
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.production
+    volumes: !reset []
+  celery-beat:
+    build:
+      context: ./backend
+      target: production
+    env_file: !override
+      - ${ENV_FILE:-.env.production}
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.production
+    volumes: !reset []
+  frontend:
+    build:
+      context: ./frontend
+      target: production
+      args:
+        VITE_API_BASE_URL: ""
+    volumes: !reset []
+    command: ["nginx", "-g", "daemon off;"]
+    ports: !override
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy

@@ -89,6 +89,26 @@ Stop the stack when it is no longer needed:
 docker compose down
 ```
 
+## Production deployment
+
+The production overlay runs Django through `Gunicorn` with the `UvicornWorker`, serves the React build from `Nginx`, proxies the API, admin, WebSocket, static, and media routes, and exposes only port `80`. PostgreSQL, Redis, RabbitMQ, and MinIO stay private inside the Docker network.
+
+Create the untracked production environment file and replace every placeholder. Do not copy development credentials or leave payment in sandbox mode:
+
+```powershell
+Copy-Item .env.production.example .env.production
+```
+
+Validate the merged configuration, then build and start it:
+
+```powershell
+docker compose --env-file .env.production -f compose.yaml -f compose.production.yml config
+docker compose --env-file .env.production -f compose.yaml -f compose.production.yml up -d --build
+docker compose --env-file .env.production -f compose.yaml -f compose.production.yml exec backend python manage.py migrate
+```
+
+The supplied `Nginx` container is an HTTP reverse proxy, not a certificate issuer. Before exposing the service publicly, terminate TLS at a trusted edge proxy or extend the deployment with a certificate manager, publish the real HTTPS domain in `DJANGO_ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS`, `CSRF_TRUSTED_ORIGINS`, `FRONTEND_URL`, `MINIO_PUBLIC_DOMAIN`, and `ZARINPAL_CALLBACK_URL`, then keep `DJANGO_SECURE_SSL_REDIRECT=true`.
+
 ## Local URLs
 
 | Service | URL | Purpose |
