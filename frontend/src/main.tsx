@@ -68,7 +68,28 @@ type Address = {
 };
 type AuthUser = { id: number; phone: string; role: "customer" | "admin" };
 type AuthResponse = { access: string; refresh: string; user: AuthUser };
-type Order = { number: string; status: string; subtotal: string };
+type OrderItem = {
+  id: number;
+  product_name: string;
+  product_sku: string;
+  unit_price: string;
+  quantity: number;
+  line_total: string;
+};
+type Order = {
+  number: string;
+  status: string;
+  subtotal: string;
+  expires_at: string | null;
+  created_at: string;
+  items: OrderItem[];
+};
+type OrdersResponse = {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: Order[];
+};
 type Route =
   | { name: "home" }
   | { name: "catalog"; category: string | null }
@@ -76,6 +97,7 @@ type Route =
   | { name: "cart" }
   | { name: "checkout" }
   | { name: "payment-result" }
+  | { name: "profile" }
   | { name: "not-found" };
 const apiBaseUrl = (
   import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000"
@@ -94,6 +116,7 @@ function getRoute(): Route {
     return { name: "checkout" };
   if (parts[0] === "payment-result" && parts.length === 1)
     return { name: "payment-result" };
+  if (parts[0] === "profile" && parts.length === 1) return { name: "profile" };
   if (parts[0] !== "products") return { name: "not-found" };
   if (parts.length === 1)
     return {
@@ -425,56 +448,6 @@ function AuthDialog({
             {admin ? "ورود با موبایل" : "ورود مدیر"}
           </button>
         </div>
-      </section>
-    </div>
-  );
-}
-
-function ProfileDialog({
-  user,
-  onClose,
-  onSignOut,
-}: {
-  user: AuthUser;
-  onClose: () => void;
-  onSignOut: () => void;
-}) {
-  return (
-    <div className="auth-backdrop" role="presentation" onMouseDown={onClose}>
-      <section
-        className="profile-dialog"
-        role="dialog"
-        aria-modal="true"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <button
-          className="auth-close"
-          type="button"
-          onClick={onClose}
-          aria-label="بستن پروفایل"
-        >
-          <Icon name="close" />
-        </button>
-        <div className="profile-avatar">
-          <Icon name="user" size={29} />
-        </div>
-        <p className="eyebrow">
-          {user.role === "admin" ? "حساب مدیریت" : "حساب کاربری"}
-        </p>
-        <h2>{user.role === "admin" ? "مدیر نوکسا" : "پروفایل من"}</h2>
-        <dl className="profile-details">
-          <div>
-            <dt>شمارهٔ موبایل</dt>
-            <dd dir="ltr">{user.phone}</dd>
-          </div>
-          <div>
-            <dt>نوع حساب</dt>
-            <dd>{user.role === "admin" ? "مدیر" : "مشتری"}</dd>
-          </div>
-        </dl>
-        <button className="signout-button" type="button" onClick={onSignOut}>
-          خروج از حساب
-        </button>
       </section>
     </div>
   );
@@ -1190,6 +1163,179 @@ function PaymentResultPage() {
   );
 }
 
+const orderStatusLabels: Record<string, string> = {
+  pending: "در انتظار پرداخت",
+  paid: "پرداخت‌شده",
+  processing: "در حال پردازش",
+  shipped: "ارسال‌شده",
+  expired: "منقضی‌شده",
+  cancelled: "لغوشده",
+};
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("fa-IR", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function ProfilePage({
+  user,
+  onSignOut,
+}: {
+  user: AuthUser | null;
+  onSignOut: () => void;
+}) {
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [page, setPage] = useState(1);
+  const [ordersResponse, setOrdersResponse] = useState<OrdersResponse | null>(
+    null,
+  );
+  useEffect(() => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError("");
+    fetchAuthenticated(`/api/v1/orders/?page=${page}`)
+      .then(async (response) => {
+        if (!response.ok) throw new Error(await getError(response));
+        return response.json() as Promise<OrdersResponse>;
+      })
+      .then((data) => {
+        setOrders(data.results);
+        setOrdersResponse(data);
+      })
+      .catch((reason) =>
+        setError(
+          reason instanceof Error
+            ? reason.message
+            : "دریافت سفارش‌ها ناموفق بود.",
+        ),
+      )
+      .finally(() => setLoading(false));
+  }, [page, user?.id]);
+  if (!user)
+    return (
+      <PageState
+        title="برای مشاهده پروفایل وارد شو"
+        text="اطلاعات حساب و سفارش‌ها به حساب کاربری شما متصل هستند."
+      />
+    );
+  return (
+    <main className="profile-page">
+      <div className="page-heading">
+        <p className="eyebrow">
+          {user.role === "admin" ? "حساب مدیریت" : "حساب کاربری"}
+        </p>
+        <h1>{user.role === "admin" ? "پروفایل مدیر" : "پروفایل من"}</h1>
+        <p>اطلاعات حساب و سفارش‌های ثبت‌شدهٔ خودت را اینجا ببین.</p>
+      </div>
+      <section className="profile-summary">
+        <div className="profile-avatar">
+          <Icon name="user" size={29} />
+        </div>
+        <dl className="profile-details">
+          <div>
+            <dt>شمارهٔ موبایل</dt>
+            <dd dir="ltr">{user.phone}</dd>
+          </div>
+          <div>
+            <dt>نوع حساب</dt>
+            <dd>{user.role === "admin" ? "مدیر" : "مشتری"}</dd>
+          </div>
+        </dl>
+        <button className="signout-button" type="button" onClick={onSignOut}>
+          خروج از حساب
+        </button>
+      </section>
+      <section className="orders-section">
+        <div className="orders-heading">
+          <div>
+            <p className="eyebrow">پیگیری خرید</p>
+            <h2>سفارش‌های من</h2>
+          </div>
+          <span>{ordersResponse?.count ?? 0} سفارش</span>
+        </div>
+        {loading ? (
+          <p className="orders-state">در حال دریافت سفارش‌ها…</p>
+        ) : error ? (
+          <p className="orders-state error">{error}</p>
+        ) : !orders.length ? (
+          <p className="orders-state">هنوز سفارشی ثبت نکرده‌ای.</p>
+        ) : (
+          <div className="orders-list">
+            {orders.map((order) => (
+              <article className="order-card" key={order.number}>
+                <div className="order-card-header">
+                  <div>
+                    <span>کد سفارش</span>
+                    <strong dir="ltr">{order.number}</strong>
+                  </div>
+                  <span className={`order-status ${order.status}`}>
+                    {orderStatusLabels[order.status] ?? order.status}
+                  </span>
+                </div>
+                <dl className="order-meta">
+                  <div>
+                    <dt>زمان ثبت</dt>
+                    <dd>{formatDate(order.created_at)}</dd>
+                  </div>
+                  <div>
+                    <dt>مبلغ</dt>
+                    <dd>{formatPrice(order.subtotal)} تومان</dd>
+                  </div>
+                  {order.status === "pending" && order.expires_at && (
+                    <div>
+                      <dt>مهلت پرداخت</dt>
+                      <dd>{formatDate(order.expires_at)}</dd>
+                    </div>
+                  )}
+                </dl>
+                <ul className="order-items">
+                  {order.items.map((item) => (
+                    <li key={item.id}>
+                      <span>{item.product_name}</span>
+                      <span>
+                        {item.quantity} × {formatPrice(item.unit_price)} تومان
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </article>
+            ))}
+          </div>
+        )}
+        {!loading &&
+          !error &&
+          ordersResponse &&
+          (ordersResponse.next || ordersResponse.previous) && (
+            <nav className="orders-pagination" aria-label="صفحه‌بندی سفارش‌ها">
+              <button
+                type="button"
+                disabled={!ordersResponse.next}
+                onClick={() => setPage((current) => current + 1)}
+              >
+                سفارش‌های قدیمی‌تر
+              </button>
+              <span>صفحه {page}</span>
+              <button
+                type="button"
+                disabled={!ordersResponse.previous}
+                onClick={() => setPage((current) => current - 1)}
+              >
+                سفارش‌های جدیدتر
+              </button>
+            </nav>
+          )}
+      </section>
+    </main>
+  );
+}
+
 function ProductPage({
   slug,
   addToCart,
@@ -1377,7 +1523,6 @@ function App() {
   const [route, setRoute] = useState<Route>(getRoute);
   const [categories, setCategories] = useState<Category[]>([]);
   const [authOpen, setAuthOpen] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
   const [cart, setCart] = useState<Cart | null>(null);
   const [user, setUser] = useState<AuthUser | null>(
     () => getStoredAuth()?.user ?? null,
@@ -1391,7 +1536,6 @@ function App() {
     const expireSession = () => {
       setUser(null);
       setCart(null);
-      setProfileOpen(false);
       setAuthOpen(true);
     };
     addEventListener("nexora-auth-expired", expireSession);
@@ -1459,6 +1603,16 @@ function App() {
       <CheckoutPage user={user} cart={cart} />
     ) : route.name === "payment-result" ? (
       <PaymentResultPage />
+    ) : route.name === "profile" ? (
+      <ProfilePage
+        user={user}
+        onSignOut={() => {
+          sessionStorage.removeItem("nexora-auth");
+          setUser(null);
+          setCart(null);
+          navigate("/");
+        }}
+      />
     ) : (
       <PageState title="صفحه پیدا نشد" text="نشانی واردشده معتبر نیست." />
     );
@@ -1467,7 +1621,7 @@ function App() {
       <Header
         user={user}
         signIn={() => setAuthOpen(true)}
-        profile={() => setProfileOpen(true)}
+        profile={() => navigate("/profile")}
         cartCount={cart?.item_count ?? 0}
       />
       {page}
@@ -1487,18 +1641,6 @@ function App() {
             setUser(response.user);
             setAuthOpen(false);
             void loadCart();
-          }}
-        />
-      )}
-      {user && profileOpen && (
-        <ProfileDialog
-          user={user}
-          onClose={() => setProfileOpen(false)}
-          onSignOut={() => {
-            sessionStorage.removeItem("nexora-auth");
-            setUser(null);
-            setCart(null);
-            setProfileOpen(false);
           }}
         />
       )}
