@@ -25,6 +25,7 @@ jobs:
       - run: pip install -r requirements/dev.txt
       - run: ruff check .
       - run: ruff format --check .
+      - run: pytest -q
       - run: python manage.py check
   frontend:
     runs-on: ubuntu-latest
