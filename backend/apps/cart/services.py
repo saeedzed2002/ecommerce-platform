@@ -1,3 +1,4 @@
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from rest_framework.exceptions import NotFound, ValidationError
 
@@ -13,6 +14,7 @@ def get_cart_for_user(*, user) -> Cart:
 
 @transaction.atomic
 def add_item(*, user, product_id: int, quantity: int) -> Cart:
+    get_user_model().objects.select_for_update().get(pk=user.pk)
     product = (
         Product.objects.select_for_update()
         .select_related("category")
@@ -43,6 +45,7 @@ def add_item(*, user, product_id: int, quantity: int) -> Cart:
 
 @transaction.atomic
 def update_item(*, user, item_id: int, quantity: int) -> Cart:
+    get_user_model().objects.select_for_update().get(pk=user.pk)
     item = (
         CartItem.objects.select_for_update()
         .select_related("product", "cart")

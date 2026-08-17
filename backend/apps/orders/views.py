@@ -1,3 +1,5 @@
+from django.contrib.auth import get_user_model
+from django.db import transaction
 from rest_framework import status
 from rest_framework.generics import ListAPIView, ListCreateAPIView
 from rest_framework.permissions import IsAuthenticated
@@ -18,11 +20,13 @@ class AddressListCreateAPIView(ListCreateAPIView):
         return Address.objects.filter(user=self.request.user)
 
     def perform_create(self, serializer):
-        if serializer.validated_data.get("is_default"):
-            Address.objects.filter(user=self.request.user, is_default=True).update(
-                is_default=False
-            )
-        serializer.save(user=self.request.user)
+        with transaction.atomic():
+            get_user_model().objects.select_for_update().get(pk=self.request.user.pk)
+            if serializer.validated_data.get("is_default"):
+                Address.objects.filter(user=self.request.user, is_default=True).update(
+                    is_default=False
+                )
+            serializer.save(user=self.request.user)
 
 
 class OrderListAPIView(ListAPIView):

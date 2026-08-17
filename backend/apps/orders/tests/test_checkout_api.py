@@ -122,6 +122,51 @@ def test_address_list_returns_only_the_authenticated_users_addresses(
 
 
 @pytest.mark.django_db
+def test_creating_a_default_address_replaces_the_previous_default(
+    client: APIClient, address: Address
+) -> None:
+    address.is_default = True
+    address.save(update_fields=["is_default"])
+
+    response = client.post(
+        "/api/v1/orders/addresses/",
+        {
+            "full_name": "New Default",
+            "phone": "09121234567",
+            "province": "Tehran",
+            "city": "Tehran",
+            "address_line": "New street",
+            "postal_code": "1234567891",
+            "is_default": True,
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.data["phone"] == "989121234567"
+    address.refresh_from_db()
+    assert address.is_default is False
+    assert Address.objects.get(pk=response.data["id"]).is_default is True
+
+
+@pytest.mark.django_db
+def test_address_rejects_an_invalid_mobile_number(client: APIClient) -> None:
+    response = client.post(
+        "/api/v1/orders/addresses/",
+        {
+            "full_name": "Invalid Phone",
+            "phone": "123",
+            "province": "Tehran",
+            "city": "Tehran",
+            "address_line": "Street",
+            "postal_code": "1234567891",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "phone" in response.data
+
+
+@pytest.mark.django_db
 def test_checkout_does_not_oversell(
     client: APIClient, user: User, product: Product, address: Address
 ) -> None:

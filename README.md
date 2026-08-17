@@ -4,16 +4,17 @@ A production-oriented e-commerce platform built as a monorepo. It currently prov
 
 ## Current status
 
-The catalog milestone is complete and merged into `main`.
+The catalog, accounts, cart, and checkout foundations are merged into `main`.
 
 - Catalog domain: categories, products, stock, discounts, product images, migrations, and Django admin.
 - Public API: versioned catalog endpoints under `/api/v1/`.
 - Storefront: responsive Persian (`RTL`) landing page that reads catalog data from the API.
 - Media: product images uploaded from the Django admin panel are stored in MinIO.
 - Accounts: phone-number-based custom user model, OTP verification API, JWT access and refresh tokens, rate limiting, and single-use verification challenges.
+- Cart and checkout: authenticated carts, delivery addresses, transactional stock reduction, price snapshots, and pending orders.
 - Quality: backend linting, formatting checks, tests, Django system checks, and frontend builds run in CI.
 
-The project is still pre-release (`v0.1.0`); a complete checkout flow, payments, and chat have not been implemented yet.
+The project is still pre-release (`v0.1.0`). Checkout currently creates a pending order; payment, expiration/cancellation policy, fulfillment, and chat are not implemented yet.
 
 ## Architecture
 
@@ -31,7 +32,7 @@ MinIO object storage (9000)
 This repository is a monorepo:
 
 - `backend/`: Django 6, Django REST Framework, Channels, Celery, and domain apps.
-- `backend/apps/catalog/`: catalog models, API, admin, migrations, and tests.
+- `backend/apps/`: accounts, catalog, cart, and orders domain apps, including models, APIs, migrations, and tests.
 - `frontend/`: React, TypeScript, Vite, and the storefront UI.
 - `compose.yaml`: local development stack.
 - `docs/`: architecture and project policies.
@@ -163,7 +164,7 @@ docker compose exec backend pytest -q
 docker compose exec backend python manage.py check
 ```
 
-The catalog test suite covers product stock and discount behavior, price validation, public category visibility, published-product visibility, and MinIO image URL serialization. Tests use an in-memory SQLite database and do not require a live MinIO instance.
+The backend test suite covers catalog behavior, OTP authentication, cart access, checkout ownership, price snapshots, stock reduction, and address contracts. Tests use an in-memory SQLite database and do not require live infrastructure.
 
 ## CI
 

@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from rest_framework.exceptions import ValidationError
 
@@ -11,6 +12,7 @@ from .models import Address, Order, OrderItem
 
 @transaction.atomic
 def create_order_from_cart(*, user, address_id: int) -> Order:
+    get_user_model().objects.select_for_update().get(pk=user.pk)
     address = Address.objects.filter(pk=address_id, user=user).first()
     if address is None:
         raise ValidationError({"address_id": "Address not found."})

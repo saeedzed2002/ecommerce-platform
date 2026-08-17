@@ -1,9 +1,20 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
+
+from apps.accounts.phone import normalize_iranian_mobile
 
 from .models import Address, Order, OrderItem
 
 
 class AddressSerializer(serializers.ModelSerializer):
+    def validate_phone(self, value: str) -> str:
+        try:
+            return normalize_iranian_mobile(value)
+        except DjangoValidationError as error:
+            raise serializers.ValidationError(
+                "Enter a valid Iranian mobile number."
+            ) from error
+
     class Meta:
         model = Address
         fields = (

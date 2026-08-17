@@ -2,21 +2,22 @@
 
 ## Boundaries
 
-- `backend/` contains the Django API, asynchronous tasks, WebSocket endpoints, and domain apps.
+- `backend/` contains the Django API, asynchronous-task configuration, and domain apps.
 - `frontend/` contains the Vite-powered React application.
 - `compose.yaml` provides the local integration environment; production orchestration is intentionally separate.
 
 ## Runtime topology
 
-The browser calls Django's HTTP API and connects to WebSocket endpoints through ASGI. Django uses PostgreSQL for transactional data, Redis for Channels and Celery results, and RabbitMQ as the Celery broker. SMS.ir credentials are supplied only through deployment secrets and are consumed by the future OTP app.
+The browser calls Django's HTTP API. Django runs through ASGI and uses PostgreSQL for transactional data, Redis for Channels and Celery results, and RabbitMQ as the Celery broker. No WebSocket consumer is implemented yet. SMS.ir credentials are supplied only through deployment secrets and are consumed by the accounts app.
 
-## Planned backend app ownership
+## Implemented and planned backend app ownership
 
 - `accounts`: custom user model, OTP authentication, SMS.ir adapter, and session/token management.
 - `catalog`: products, categories, inventory, pricing, and media metadata.
-- `orders`: carts, checkout, orders, payments, and fulfillment.
-- `chat`: conversations, messages, authorization, and Channels consumers.
-- `core`: shared domain primitives, error handling, and platform utilities.
+- `cart`: authenticated shopping carts and cart items.
+- `orders`: delivery addresses, checkout, orders, and price snapshots; payments and fulfillment are planned.
+- `chat`: planned conversations, messages, authorization, and Channels consumers.
+- `core`: planned shared domain primitives, error handling, and platform utilities.
 
 ## Security baselines
 
