@@ -1422,6 +1422,111 @@ footer small {
   }
 }
 
+.checkout-page {
+  max-width: 1240px;
+  min-height: 58vh;
+  margin: 0 auto;
+  padding: 64px 32px 90px;
+}
+.checkout-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 330px;
+  gap: 24px;
+  align-items: start;
+}
+.address-section {
+  padding: 25px;
+  display: grid;
+  gap: 12px;
+  border: 1px solid #e8ebe3;
+  border-radius: 17px;
+  background: #fffefa;
+}
+.address-section h2 {
+  font-size: 1.08rem;
+}
+.address-card {
+  padding: 14px;
+  display: flex;
+  gap: 12px;
+  border: 1px solid #e0e5dc;
+  border-radius: 12px;
+  cursor: pointer;
+}
+.address-card.selected {
+  border-color: #315f47;
+  background: #f1f7ef;
+}
+.address-card input {
+  accent-color: #315f47;
+}
+.address-card span {
+  display: grid;
+  gap: 4px;
+  font-size: 0.75rem;
+}
+.address-card small {
+  color: #6e786f;
+  font-size: 0.68rem;
+}
+.address-form {
+  margin-top: 14px;
+  padding-top: 20px;
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid #e7ebe3;
+}
+.address-form > div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.address-form input,
+.address-form textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #d9e0d6;
+  border-radius: 10px;
+  outline: none;
+  font:
+    0.76rem Vazirmatn,
+    Tahoma,
+    sans-serif;
+}
+.address-form textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+.address-form input:focus,
+.address-form textarea:focus {
+  border-color: #537b60;
+  box-shadow: 0 0 0 3px #4c7b5518;
+}
+.address-form button {
+  min-height: 43px;
+  border: 0;
+  border-radius: 10px;
+  color: #315f47;
+  background: #edf5eb;
+  cursor: pointer;
+  font-weight: 700;
+}
+.address-form button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+@media (max-width: 760px) {
+  .checkout-page {
+    padding: 42px 20px 65px;
+  }
+  .checkout-layout {
+    grid-template-columns: 1fr;
+  }
+  .address-form > div {
+    grid-template-columns: 1fr;
+  }
+}
+
 .catalog-page,
 .product-page,
 .page-state {
