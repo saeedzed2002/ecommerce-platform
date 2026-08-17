@@ -47,6 +47,19 @@ type ProductListResponse = {
   results: Product[];
 };
 
+type ProductImage = {
+  id: number;
+  image_url: string | null;
+  alt_text: string;
+  display_order: number;
+};
+
+type ProductDetail = Product & {
+  description: string;
+  sku: string;
+  images: ProductImage[];
+};
+
 type AuthUser = {
   id: number;
   phone: string;
@@ -222,6 +235,48 @@ function ProfileDialog({
   </div>;
 }
 
+function ProductDetailDialog({
+  slug,
+  onClose,
+}: {
+  slug: string;
+  onClose: () => void;
+}) {
+  const [product, setProduct] = useState<ProductDetail | null>(null);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setProduct(null);
+    setSelectedImage(null);
+    setHasError(false);
+    fetch(`${apiBaseUrl}/api/v1/catalog/products/${slug}/`, { signal: controller.signal })
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((detail: ProductDetail) => {
+        setProduct(detail);
+        setSelectedImage(detail.images.find((image) => image.image_url)?.image_url ?? detail.primary_image);
+      })
+      .catch((error) => {
+        if (!(error instanceof DOMException && error.name === "AbortError")) setHasError(true);
+      });
+    return () => controller.abort();
+  }, [slug]);
+
+  if (hasError) return <div className="product-detail-backdrop" role="presentation" onMouseDown={onClose}><section className="product-detail-dialog error-state" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}><button className="auth-close" type="button" onClick={onClose} aria-label="بستن جزئیات محصول"><Icon name="close" size={19} /></button><h2>محصول پیدا نشد</h2><p>این محصول در دسترس نیست یا انتشار آن متوقف شده است.</p></section></div>;
+  if (!product) return <div className="product-detail-backdrop" role="presentation" onMouseDown={onClose}><section className="product-detail-dialog product-detail-loading" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}><span className="detail-loader" /><p>در حال دریافت اطلاعات محصول…</p></section></div>;
+
+  const imageChoices = product.images.filter((image) => image.image_url);
+  const visibleImage = selectedImage ?? product.primary_image;
+  return <div className="product-detail-backdrop" role="presentation" onMouseDown={onClose}>
+    <section className="product-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="product-detail-title" onMouseDown={(event) => event.stopPropagation()}>
+      <button className="auth-close" type="button" onClick={onClose} aria-label="بستن جزئیات محصول"><Icon name="close" size={19} /></button>
+      <div className="detail-gallery"><div className="detail-main-image">{visibleImage ? <img src={visibleImage} alt={product.name} /> : <div className="image-fallback">{product.name.slice(0, 1)}</div>}{product.discount_percent > 0 && <span className="detail-discount">{product.discount_percent}٪ تخفیف</span>}</div>{imageChoices.length > 1 && <div className="detail-thumbnails">{imageChoices.map((image) => <button className={image.image_url === visibleImage ? "thumbnail active" : "thumbnail"} type="button" key={image.id} onClick={() => setSelectedImage(image.image_url)}><img src={image.image_url ?? ""} alt={image.alt_text || product.name} /></button>)}</div>}</div>
+      <div className="detail-content"><p className="eyebrow">{product.category.name}</p><h2 id="product-detail-title">{product.name}</h2><p className={product.in_stock ? "detail-stock available" : "detail-stock unavailable"}>{product.in_stock ? "موجود در انبار" : "ناموجود"}</p><div className="detail-price">{product.compare_at_price && <del>{formatPrice(product.compare_at_price)} تومان</del>}<strong>{formatPrice(product.price)} <small>تومان</small></strong></div><p className="detail-description">{product.description || product.short_description || "توضیحی برای این محصول ثبت نشده است."}</p><dl className="detail-meta"><div><dt>کد کالا</dt><dd dir="ltr">{product.sku}</dd></div><div><dt>دسته‌بندی</dt><dd>{product.category.name}</dd></div></dl><div className="detail-notice"><Icon name="shield" size={19} /><span>ضمانت اصالت کالا و امکان بازگشت طبق شرایط فروشگاه</span></div></div>
+    </section>
+  </div>;
+}
+
 function App() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -229,6 +284,7 @@ function App() {
   const [error, setError] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [selectedProductSlug, setSelectedProductSlug] = useState<string | null>(null);
   const [authUser, setAuthUser] = useState<AuthUser | null>(() => {
     try {
       const stored = sessionStorage.getItem("nexora-auth");
@@ -300,13 +356,14 @@ function App() {
 
       <section className="section categories-section" id="categories" aria-labelledby="categories-title"><div className="section-heading"><div><p className="eyebrow">یک انتخاب برای هر سلیقه</p><h2 id="categories-title">دسته‌بندی‌های محبوب</h2></div><a className="text-link" href="#products">مشاهده همه <Icon name="arrow" size={17} /></a></div><div className="category-grid">{isLoading && <p className="catalog-status">در حال دریافت دسته‌بندی‌ها…</p>}{!isLoading && !error && categories.map((category, index) => <a href={`#${category.slug}`} className={`category-card ${categoryTones[index % categoryTones.length]}`} key={category.id}><span>{categoryIcons[index % categoryIcons.length]}</span><div><h3>{category.name}</h3><p>{category.description || "مشاهده‌ی محصولات"}</p></div><Icon name="arrow" size={17} /></a>)}</div></section>
 
-      <section className="section product-section" id="products" aria-labelledby="products-title"><div className="section-heading"><div><p className="eyebrow">انتخاب‌شده برای شما</p><h2 id="products-title">محصولات تازه</h2></div><a className="text-link" href="#products">مشاهده همه <Icon name="arrow" size={17} /></a></div>{error ? <p className="catalog-status error">دریافت محصولات ممکن نشد. اتصال backend را بررسی کن.</p> : <div className="product-grid">{isLoading && <p className="catalog-status">در حال دریافت محصولات…</p>}{!isLoading && products.length === 0 && <p className="catalog-status">هنوز محصولی برای نمایش وجود ندارد.</p>}{products.map((product) => <article className="product-card" key={product.id}><div className="product-image">{product.primary_image ? <img src={product.primary_image} alt={product.name} /> : <div className="image-fallback">{product.name.slice(0, 1)}</div>}<span className="product-badge">{product.category.name}</span><button className="wish-button" aria-label={`افزودن ${product.name} به علاقه‌مندی‌ها`}><Icon name="heart" size={18} /></button></div><div className="product-content"><div className="product-meta"><span>{product.category.name}</span><span className={product.in_stock ? "in-stock" : "out-of-stock"}>{product.in_stock ? "موجود" : "ناموجود"}</span></div><h3>{product.name}</h3><div className="price-row"><div>{product.compare_at_price && <del>{formatPrice(product.compare_at_price)}</del>}<strong>{formatPrice(product.price)} <small>تومان</small></strong></div>{product.discount_percent > 0 && <b>{product.discount_percent}٪</b>}</div></div></article>)}</div>}</section>
+      <section className="section product-section" id="products" aria-labelledby="products-title"><div className="section-heading"><div><p className="eyebrow">انتخاب‌شده برای شما</p><h2 id="products-title">محصولات تازه</h2></div><a className="text-link" href="#products">مشاهده همه <Icon name="arrow" size={17} /></a></div>{error ? <p className="catalog-status error">دریافت محصولات ممکن نشد. اتصال backend را بررسی کن.</p> : <div className="product-grid">{isLoading && <p className="catalog-status">در حال دریافت محصولات…</p>}{!isLoading && products.length === 0 && <p className="catalog-status">هنوز محصولی برای نمایش وجود ندارد.</p>}{products.map((product) => <article className="product-card" key={product.id}><button className="product-card-button" type="button" onClick={() => setSelectedProductSlug(product.slug)}><div className="product-image">{product.primary_image ? <img src={product.primary_image} alt={product.name} /> : <div className="image-fallback">{product.name.slice(0, 1)}</div>}<span className="product-badge">{product.category.name}</span></div><div className="product-content"><div className="product-meta"><span>{product.category.name}</span><span className={product.in_stock ? "in-stock" : "out-of-stock"}>{product.in_stock ? "موجود" : "ناموجود"}</span></div><h3>{product.name}</h3><div className="price-row"><div>{product.compare_at_price && <del>{formatPrice(product.compare_at_price)}</del>}<strong>{formatPrice(product.price)} <small>تومان</small></strong></div>{product.discount_percent > 0 && <b>{product.discount_percent}٪</b>}</div></div></button><button className="wish-button" type="button" aria-label={`افزودن ${product.name} به علاقه‌مندی‌ها`}><Icon name="heart" size={18} /></button></article>)}</div>}</section>
 
       <section className="member-banner" id="offers"><div><p className="eyebrow">پیشنهاد ویژه‌ی اعضا</p><h2>به جمع نوکسا کلاب بپیوند.</h2><p>از تخفیف‌های شخصی‌سازی‌شده و خبرهای تازه زودتر باخبر شو.</p><a className="button button-dark" href="#join">عضویت در باشگاه <Icon name="arrow" size={18} /></a></div><div className="banner-shape">N<span>+</span></div></section>
     </main>
     <footer id="about"><a className="brand" href="#home"><span className="brand-mark">n</span><span>نوکسا</span></a><p>یک تجربه‌ی ساده‌تر برای انتخاب و خرید بهتر.</p><small>© ۱۴۰۵ نوکسا. تمامی حقوق محفوظ است.</small></footer>
     {isAuthOpen && <AuthDialog onClose={() => setIsAuthOpen(false)} onAuthenticated={handleAuthenticated} />}
     {authUser && isProfileOpen && <ProfileDialog user={authUser} onClose={() => setIsProfileOpen(false)} onSignOut={signOut} />}
+    {selectedProductSlug && <ProductDetailDialog slug={selectedProductSlug} onClose={() => setSelectedProductSlug(null)} />}
   </div>;
 }
 
