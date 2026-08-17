@@ -20,7 +20,6 @@ type IconName =
   | "support"
   | "truck"
   | "user";
-
 type Category = {
   id: number;
   name: string;
@@ -28,7 +27,6 @@ type Category = {
   description: string;
   image_url: string;
 };
-
 type Product = {
   id: number;
   name: string;
@@ -41,65 +39,138 @@ type Product = {
   category: Category;
   primary_image: string | null;
 };
-
-type ProductListResponse = {
-  count: number;
-  results: Product[];
-};
-
-type ProductImage = {
-  id: number;
-  image_url: string | null;
-  alt_text: string;
-  display_order: number;
-};
-
 type ProductDetail = Product & {
   description: string;
   sku: string;
-  images: ProductImage[];
+  images: { id: number; image_url: string | null; alt_text: string }[];
 };
-
-type AuthUser = {
-  id: number;
-  phone: string;
-  role: "customer" | "admin";
-};
-
-type AuthResponse = {
-  access: string;
-  refresh: string;
-  user: AuthUser;
-};
-
-type AuthPanel = "customer-phone" | "customer-code" | "admin";
-
-const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000").replace(/\/$/, "");
+type AuthUser = { id: number; phone: string; role: "customer" | "admin" };
+type AuthResponse = { access: string; refresh: string; user: AuthUser };
+type Route =
+  | { name: "home" }
+  | { name: "catalog"; category: string | null }
+  | { name: "product"; slug: string }
+  | { name: "not-found" };
+const apiBaseUrl = (
+  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000"
+).replace(/\/$/, "");
 const categoryIcons = ["⌁", "◒", "⌂", "✦"];
 const categoryTones = ["blue", "peach", "mint", "lilac"];
 
 function formatPrice(value: string) {
   return new Intl.NumberFormat("fa-IR").format(Number(value));
 }
+function getRoute(): Route {
+  const parts = location.pathname.split("/").filter(Boolean);
+  if (!parts.length) return { name: "home" };
+  if (parts[0] !== "products") return { name: "not-found" };
+  if (parts.length === 1)
+    return {
+      name: "catalog",
+      category: new URLSearchParams(location.search).get("category"),
+    };
+  return parts.length === 2
+    ? { name: "product", slug: decodeURIComponent(parts[1]) }
+    : { name: "not-found" };
+}
+function navigate(path: string) {
+  history.pushState({}, "", path);
+  dispatchEvent(new PopStateEvent("popstate"));
+  scrollTo({ top: 0, behavior: "instant" });
+}
 
 function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
   const paths: Record<IconName, ReactNode> = {
     arrow: <path d="M19 12H5m6-6-6 6 6 6" />,
-    bag: <><path d="M6 8h12l1 12H5L6 8Z" /><path d="M9 9V6a3 3 0 0 1 6 0v3" /></>,
-    heart: <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.9-8.6a5.5 5.5 0 0 0-.1-7.8Z" />,
+    bag: (
+      <>
+        <path d="M6 8h12l1 12H5L6 8Z" />
+        <path d="M9 9V6a3 3 0 0 1 6 0v3" />
+      </>
+    ),
     close: <path d="m6 6 12 12M18 6 6 18" />,
-    lock: <><rect x="5" y="10" width="14" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></>,
-    menu: <><path d="M4 7h16M4 12h16M4 17h16" /></>,
-    search: <><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></>,
-    truck: <><path d="M3 6h11v10H3zM14 10h4l3 3v3h-7z" /><circle cx="7" cy="18" r="1.5" /><circle cx="18" cy="18" r="1.5" /></>,
+    heart: (
+      <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.9-8.6a5.5 5.5 0 0 0-.1-7.8Z" />
+    ),
+    lock: (
+      <>
+        <rect x="5" y="10" width="14" height="11" rx="2" />
+        <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+      </>
+    ),
+    menu: (
+      <>
+        <path d="M4 7h16M4 12h16M4 17h16" />
+      </>
+    ),
+    search: (
+      <>
+        <circle cx="11" cy="11" r="6.5" />
+        <path d="m16 16 4 4" />
+      </>
+    ),
+    truck: (
+      <>
+        <path d="M3 6h11v10H3zM14 10h4l3 3v3h-7z" />
+        <circle cx="7" cy="18" r="1.5" />
+        <circle cx="18" cy="18" r="1.5" />
+      </>
+    ),
     shield: <path d="M12 3 5 6v5c0 4.5 3 8.2 7 10 4-1.8 7-5.5 7-10V6l-7-3Z" />,
-    support: <><path d="M4 13a8 8 0 0 1 16 0" /><path d="M4 13v4a2 2 0 0 0 2 2h1v-6H6a2 2 0 0 0-2 2Zm16 0v4a2 2 0 0 1-2 2h-1v-6h1a2 2 0 0 1 2 2Z" /><path d="M17 19c0 2-2 2-5 2" /></>,
-    user: <><circle cx="12" cy="8" r="3.5" /><path d="M5 21a7 7 0 0 1 14 0" /></>,
+    support: (
+      <>
+        <path d="M4 13a8 8 0 0 1 16 0" />
+        <path d="M4 13v4a2 2 0 0 0 2 2h1v-6H6a2 2 0 0 0-2 2Zm16 0v4a2 2 0 0 1-2 2h-1v-6h1a2 2 0 0 1 2 2Z" />
+        <path d="M17 19c0 2-2 2-5 2" />
+      </>
+    ),
+    user: (
+      <>
+        <circle cx="12" cy="8" r="3.5" />
+        <path d="M5 21a7 7 0 0 1 14 0" />
+      </>
+    ),
   };
-  return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
+  return (
+    <svg
+      aria-hidden="true"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {paths[name]}
+    </svg>
+  );
 }
 
-function getApiError(response: Response) {
+function AppLink({
+  href,
+  children,
+  className,
+}: {
+  href: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <a
+      href={href}
+      className={className}
+      onClick={(event) => {
+        event.preventDefault();
+        navigate(href);
+      }}
+    >
+      {children}
+    </a>
+  );
+}
+function getError(response: Response) {
   return response
     .json()
     .then((body: { detail?: string }) => body.detail ?? "عملیات انجام نشد.")
@@ -113,85 +184,151 @@ function AuthDialog({
   onClose: () => void;
   onAuthenticated: (response: AuthResponse) => void;
 }) {
-  const [panel, setPanel] = useState<AuthPanel>("customer-phone");
+  const [admin, setAdmin] = useState(false);
+  const [codePanel, setCodePanel] = useState(false);
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState("");
-
-  async function submitCustomerPhone(event: FormEvent<HTMLFormElement>) {
+  const [pending, setPending] = useState(false);
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setIsSubmitting(true);
+    setPending(true);
     setMessage("");
+    const url = admin
+      ? "/api/v1/auth/admin/login/"
+      : codePanel
+        ? "/api/v1/auth/otp/verify/"
+        : "/api/v1/auth/otp/request/";
+    const body = admin
+      ? { phone, password }
+      : codePanel
+        ? { phone, code }
+        : { phone };
     try {
-      const response = await fetch(`${apiBaseUrl}/api/v1/auth/otp/request/`, {
+      const response = await fetch(`${apiBaseUrl}${url}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone }),
+        body: JSON.stringify(body),
       });
-      if (!response.ok) throw new Error(await getApiError(response));
-      setPanel("customer-code");
-      setMessage("کد تأیید برای شمارهٔ شما ارسال شد.");
+      if (!response.ok) throw new Error(await getError(response));
+      if (!admin && !codePanel) {
+        setCodePanel(true);
+        setMessage("کد تأیید برای شمارهٔ شما ارسال شد.");
+      } else onAuthenticated((await response.json()) as AuthResponse);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "ارسال کد ناموفق بود.");
+      setMessage(error instanceof Error ? error.message : "عملیات ناموفق بود.");
     } finally {
-      setIsSubmitting(false);
+      setPending(false);
     }
   }
-
-  async function submitCustomerCode(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setIsSubmitting(true);
-    setMessage("");
-    try {
-      const response = await fetch(`${apiBaseUrl}/api/v1/auth/otp/verify/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, code }),
-      });
-      if (!response.ok) throw new Error(await getApiError(response));
-      onAuthenticated((await response.json()) as AuthResponse);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "تأیید کد ناموفق بود.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
-  async function submitAdminLogin(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setIsSubmitting(true);
-    setMessage("");
-    try {
-      const response = await fetch(`${apiBaseUrl}/api/v1/auth/admin/login/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, password }),
-      });
-      if (!response.ok) throw new Error(await getApiError(response));
-      onAuthenticated((await response.json()) as AuthResponse);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "ورود مدیر ناموفق بود.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
-  const customerFlow = panel !== "admin";
-  return <div className="auth-backdrop" role="presentation" onMouseDown={onClose}>
-    <section className="auth-dialog" role="dialog" aria-modal="true" aria-labelledby="auth-title" onMouseDown={(event) => event.stopPropagation()}>
-      <button className="auth-close" type="button" onClick={onClose} aria-label="بستن پنجره ورود"><Icon name="close" size={19} /></button>
-      <div className="auth-brand"><span className="brand-mark">n</span><span>نوکسا</span></div>
-      <div className="auth-heading"><p className="eyebrow">{customerFlow ? "خوش آمدی" : "دسترسی مدیریت"}</p><h2 id="auth-title">{panel === "customer-code" ? "کد تأیید را وارد کن" : customerFlow ? "ورود یا ثبت‌نام" : "ورود مدیر"}</h2><p>{panel === "customer-code" ? "کد شش‌رقمی ارسال‌شده به شمارهٔ موبایلت را وارد کن." : customerFlow ? "با شمارهٔ موبایل وارد شو؛ اگر حساب نداشته باشی، همان لحظه ساخته می‌شود." : "ورود مدیر فقط با شمارهٔ ثبت‌شده و رمز عبور انجام می‌شود."}</p></div>
-
-      {panel === "customer-phone" && <form className="auth-form" onSubmit={submitCustomerPhone}><label htmlFor="customer-phone">شمارهٔ موبایل</label><input id="customer-phone" value={phone} onChange={(event) => setPhone(event.target.value)} inputMode="tel" autoComplete="tel" placeholder="۰۹۱۲ ۱۲۳ ۴۵۶۷" required /><button className="auth-submit" type="submit" disabled={isSubmitting}>{isSubmitting ? "در حال ارسال…" : "دریافت کد تأیید"}<Icon name="arrow" size={18} /></button></form>}
-      {panel === "customer-code" && <form className="auth-form" onSubmit={submitCustomerCode}><label htmlFor="customer-code">کد تأیید</label><input className="otp-input" id="customer-code" value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" placeholder="— — — — — —" required /><button className="auth-submit" type="submit" disabled={isSubmitting || code.length !== 6}>{isSubmitting ? "در حال بررسی…" : "تأیید و ورود"}<Icon name="arrow" size={18} /></button><button className="auth-back" type="button" onClick={() => { setPanel("customer-phone"); setCode(""); setMessage(""); }}>اصلاح شمارهٔ موبایل</button></form>}
-      {panel === "admin" && <form className="auth-form" onSubmit={submitAdminLogin}><label htmlFor="admin-phone">شمارهٔ موبایل مدیر</label><input id="admin-phone" value={phone} onChange={(event) => setPhone(event.target.value)} inputMode="tel" autoComplete="username" placeholder="۰۹۱۲ ۱۲۳ ۴۵۶۷" required /><label htmlFor="admin-password">رمز عبور</label><input id="admin-password" value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="current-password" placeholder="رمز عبور مدیر" required /><button className="auth-submit" type="submit" disabled={isSubmitting}>{isSubmitting ? "در حال ورود…" : "ورود به حساب مدیر"}<Icon name="lock" size={17} /></button></form>}
-      {message && <p className="auth-message" role="status">{message}</p>}
-      <div className="auth-switch"><span>{customerFlow ? "مدیر هستی؟" : "مشتری هستی؟"}</span><button type="button" onClick={() => { setPanel(customerFlow ? "admin" : "customer-phone"); setMessage(""); }}>{customerFlow ? "ورود مدیر" : "ورود یا ثبت‌نام با موبایل"}</button></div>
-    </section>
-  </div>;
+  const title = admin
+    ? "ورود مدیر"
+    : codePanel
+      ? "کد تأیید را وارد کن"
+      : "ورود یا ثبت‌نام";
+  return (
+    <div className="auth-backdrop" role="presentation" onMouseDown={onClose}>
+      <section
+        className="auth-dialog"
+        role="dialog"
+        aria-modal="true"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <button
+          className="auth-close"
+          type="button"
+          onClick={onClose}
+          aria-label="بستن پنجره ورود"
+        >
+          <Icon name="close" />
+        </button>
+        <div className="auth-brand">
+          <span className="brand-mark">n</span>
+          <span>نوکسا</span>
+        </div>
+        <div className="auth-heading">
+          <p className="eyebrow">{admin ? "دسترسی مدیریت" : "خوش آمدی"}</p>
+          <h2>{title}</h2>
+          <p>
+            {admin
+              ? "ورود مدیر فقط با شمارهٔ ثبت‌شده و رمز عبور انجام می‌شود."
+              : codePanel
+                ? "کد شش‌رقمی ارسال‌شده را وارد کن."
+                : "با شمارهٔ موبایل وارد شو؛ در صورت نیاز حساب ساخته می‌شود."}
+          </p>
+        </div>
+        <form className="auth-form" onSubmit={submit}>
+          <label htmlFor="phone">شمارهٔ موبایل</label>
+          <input
+            id="phone"
+            value={phone}
+            onChange={(event) => setPhone(event.target.value)}
+            inputMode="tel"
+            autoComplete="tel"
+            required
+          />
+          {codePanel && (
+            <>
+              <label htmlFor="code">کد تأیید</label>
+              <input
+                id="code"
+                className="otp-input"
+                value={code}
+                onChange={(event) =>
+                  setCode(event.target.value.replace(/\D/g, "").slice(0, 6))
+                }
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                required
+              />
+            </>
+          )}
+          {admin && (
+            <>
+              <label htmlFor="password">رمز عبور</label>
+              <input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete="current-password"
+                required
+              />
+            </>
+          )}
+          <button
+            className="auth-submit"
+            type="submit"
+            disabled={pending || (codePanel && code.length !== 6)}
+          >
+            {pending
+              ? "در حال انجام…"
+              : admin
+                ? "ورود به حساب مدیر"
+                : codePanel
+                  ? "تأیید و ورود"
+                  : "دریافت کد تأیید"}
+            <Icon name={admin ? "lock" : "arrow"} size={17} />
+          </button>
+        </form>
+        {message && <p className="auth-message">{message}</p>}
+        <div className="auth-switch">
+          <span>{admin ? "مشتری هستی؟" : "مدیر هستی؟"}</span>
+          <button
+            type="button"
+            onClick={() => {
+              setAdmin(!admin);
+              setCodePanel(false);
+              setMessage("");
+            }}
+          >
+            {admin ? "ورود با موبایل" : "ورود مدیر"}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
 }
 
 function ProfileDialog({
@@ -203,168 +340,579 @@ function ProfileDialog({
   onClose: () => void;
   onSignOut: () => void;
 }) {
-  const [profile, setProfile] = useState<AuthUser>(user);
-  const [isRefreshing, setIsRefreshing] = useState(true);
-
-  useEffect(() => {
-    const stored = sessionStorage.getItem("nexora-auth");
-    if (!stored) {
-      setIsRefreshing(false);
-      return;
-    }
-    const session = JSON.parse(stored) as AuthResponse;
-    fetch(`${apiBaseUrl}/api/v1/auth/me/`, {
-      headers: { Authorization: `Bearer ${session.access}` },
-    })
-      .then((response) => response.ok ? response.json() : Promise.reject())
-      .then((currentUser: AuthUser) => setProfile(currentUser))
-      .catch(() => undefined)
-      .finally(() => setIsRefreshing(false));
-  }, []);
-
-  return <div className="auth-backdrop" role="presentation" onMouseDown={onClose}>
-    <section className="profile-dialog" role="dialog" aria-modal="true" aria-labelledby="profile-title" onMouseDown={(event) => event.stopPropagation()}>
-      <button className="auth-close" type="button" onClick={onClose} aria-label="بستن پروفایل"><Icon name="close" size={19} /></button>
-      <div className="profile-avatar"><Icon name="user" size={29} /></div>
-      <p className="eyebrow">{profile.role === "admin" ? "حساب مدیریت" : "حساب کاربری"}</p>
-      <h2 id="profile-title">{profile.role === "admin" ? "مدیر نوکسا" : "پروفایل من"}</h2>
-      <p className="profile-description">{isRefreshing ? "در حال به‌روزرسانی اطلاعات…" : "خوش آمدی. اطلاعات ورود این نشست در این بخش نمایش داده می‌شود."}</p>
-      <dl className="profile-details"><div><dt>شمارهٔ موبایل</dt><dd dir="ltr">{profile.phone}</dd></div><div><dt>نوع حساب</dt><dd>{profile.role === "admin" ? "مدیر" : "مشتری"}</dd></div></dl>
-      <button className="signout-button" type="button" onClick={onSignOut}>خروج از حساب</button>
-    </section>
-  </div>;
+  return (
+    <div className="auth-backdrop" role="presentation" onMouseDown={onClose}>
+      <section
+        className="profile-dialog"
+        role="dialog"
+        aria-modal="true"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <button
+          className="auth-close"
+          type="button"
+          onClick={onClose}
+          aria-label="بستن پروفایل"
+        >
+          <Icon name="close" />
+        </button>
+        <div className="profile-avatar">
+          <Icon name="user" size={29} />
+        </div>
+        <p className="eyebrow">
+          {user.role === "admin" ? "حساب مدیریت" : "حساب کاربری"}
+        </p>
+        <h2>{user.role === "admin" ? "مدیر نوکسا" : "پروفایل من"}</h2>
+        <dl className="profile-details">
+          <div>
+            <dt>شمارهٔ موبایل</dt>
+            <dd dir="ltr">{user.phone}</dd>
+          </div>
+          <div>
+            <dt>نوع حساب</dt>
+            <dd>{user.role === "admin" ? "مدیر" : "مشتری"}</dd>
+          </div>
+        </dl>
+        <button className="signout-button" type="button" onClick={onSignOut}>
+          خروج از حساب
+        </button>
+      </section>
+    </div>
+  );
 }
 
-function ProductDetailDialog({
-  slug,
-  onClose,
+function Header({
+  user,
+  signIn,
+  profile,
 }: {
-  slug: string;
-  onClose: () => void;
+  user: AuthUser | null;
+  signIn: () => void;
+  profile: () => void;
 }) {
+  return (
+    <>
+      <div className="announcement">
+        ارسال رایگان برای سفارش‌های بالای ۲ میلیون تومان <span>✦</span> تا ۷ روز
+        ضمانت بازگشت کالا
+      </div>
+      <header className="site-header">
+        <AppLink href="/" className="brand">
+          <span className="brand-mark">n</span>
+          <span>نوکسا</span>
+        </AppLink>
+        <nav className="desktop-nav">
+          <AppLink href="/products">فروشگاه</AppLink>
+          <AppLink href="/products">دسته‌بندی‌ها</AppLink>
+          <a href="/#offers">پیشنهادها</a>
+          <a href="/#about">درباره‌ی ما</a>
+        </nav>
+        <div className="header-actions">
+          <button className="icon-button" aria-label="جست‌وجو">
+            <Icon name="search" />
+          </button>
+          <button className="icon-button" aria-label="علاقه‌مندی‌ها">
+            <Icon name="heart" />
+          </button>
+          <button className="cart-button" aria-label="سبد خرید">
+            <Icon name="bag" />
+            <span>۰</span>
+          </button>
+          {user ? (
+            <button
+              className="account-button signed-in"
+              type="button"
+              onClick={profile}
+            >
+              <Icon name="user" size={17} />
+              <span>{user.role === "admin" ? "مدیر" : "پروفایل"}</span>
+            </button>
+          ) : (
+            <button className="account-button" type="button" onClick={signIn}>
+              <Icon name="user" size={17} />
+              <span>ورود | ثبت‌نام</span>
+            </button>
+          )}
+          <button className="menu-button" aria-label="منو">
+            <Icon name="menu" />
+          </button>
+        </div>
+      </header>
+    </>
+  );
+}
+
+function ProductCard({ product }: { product: Product }) {
+  return (
+    <article className="product-card">
+      <AppLink
+        className="product-card-button"
+        href={`/products/${encodeURIComponent(product.slug)}`}
+      >
+        <div className="product-image">
+          {product.primary_image ? (
+            <img src={product.primary_image} alt={product.name} />
+          ) : (
+            <div className="image-fallback">{product.name.slice(0, 1)}</div>
+          )}
+          <span className="product-badge">{product.category.name}</span>
+        </div>
+        <div className="product-content">
+          <div className="product-meta">
+            <span>{product.category.name}</span>
+            <span className={product.in_stock ? "in-stock" : "out-of-stock"}>
+              {product.in_stock ? "موجود" : "ناموجود"}
+            </span>
+          </div>
+          <h3>{product.name}</h3>
+          <div className="price-row">
+            <div>
+              {product.compare_at_price && (
+                <del>{formatPrice(product.compare_at_price)}</del>
+              )}
+              <strong>
+                {formatPrice(product.price)} <small>تومان</small>
+              </strong>
+            </div>
+            {product.discount_percent > 0 && <b>{product.discount_percent}٪</b>}
+          </div>
+        </div>
+      </AppLink>
+      <button
+        className="wish-button"
+        type="button"
+        aria-label={`افزودن ${product.name} به علاقه‌مندی‌ها`}
+      >
+        <Icon name="heart" size={18} />
+      </button>
+    </article>
+  );
+}
+function useProducts(query: string) {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    setError(false);
+    fetch(`${apiBaseUrl}/api/v1/catalog/products/${query}`, {
+      signal: controller.signal,
+    })
+      .then((response) => (response.ok ? response.json() : Promise.reject()))
+      .then((data: { results: Product[] }) => setProducts(data.results))
+      .catch((reason) => {
+        if (!(reason instanceof DOMException && reason.name === "AbortError"))
+          setError(true);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, [query]);
+  return { products, loading, error };
+}
+function ProductGrid({
+  products,
+  loading,
+  error,
+}: ReturnType<typeof useProducts>) {
+  if (error)
+    return (
+      <p className="catalog-status error">
+        دریافت محصولات ممکن نشد. اتصال `backend` را بررسی کن.
+      </p>
+    );
+  if (loading) return <p className="catalog-status">در حال دریافت محصولات…</p>;
+  if (!products.length)
+    return (
+      <p className="catalog-status">محصولی در این دسته‌بندی وجود ندارد.</p>
+    );
+  return (
+    <div className="product-grid">
+      {products.map((product) => (
+        <ProductCard product={product} key={product.id} />
+      ))}
+    </div>
+  );
+}
+
+function HomePage({ categories }: { categories: Category[] }) {
+  const catalog = useProducts("?ordering=newest");
+  return (
+    <main>
+      <section className="hero">
+        <div className="hero-copy">
+          <p className="eyebrow">انتخاب‌های تازه، هر روز</p>
+          <h1>
+            هر آنچه دوست داری،
+            <br />
+            <em>همین‌جا پیدا کن.</em>
+          </h1>
+          <p className="hero-description">
+            از برندهای محبوب تا کشف‌های تازه؛ خریدی مطمئن و ساده، برای لحظه‌های
+            مهم زندگی.
+          </p>
+          <div className="hero-actions">
+            <AppLink className="button button-primary" href="/products">
+              مشاهده‌ی محصولات <Icon name="arrow" size={18} />
+            </AppLink>
+            <AppLink className="text-link" href="/products">
+              مشاهده‌ی دسته‌بندی‌ها
+            </AppLink>
+          </div>
+        </div>
+        <div className="hero-visual">
+          <div className="hero-orbit orbit-one" />
+          <div className="hero-orbit orbit-two" />
+          <div className="hero-image-wrap">
+            <img
+              src="https://images.unsplash.com/photo-1492707892479-7bc8d5a4ee93?auto=format&fit=crop&w=1100&q=85"
+              alt="مجموعه‌ای از محصولات منتخب"
+            />
+          </div>
+        </div>
+      </section>
+      <section className="benefits">
+        <div>
+          <Icon name="truck" />
+          <p>
+            <strong>ارسال سریع</strong>
+            <small>تحویل در کوتاه‌ترین زمان</small>
+          </p>
+        </div>
+        <div>
+          <Icon name="shield" />
+          <p>
+            <strong>خرید مطمئن</strong>
+            <small>ضمانت اصالت و بازگشت</small>
+          </p>
+        </div>
+        <div>
+          <Icon name="support" />
+          <p>
+            <strong>پشتیبانی همراه شما</strong>
+            <small>پاسخ‌گویی ۲۴ ساعته</small>
+          </p>
+        </div>
+      </section>
+      <section className="section">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">یک انتخاب برای هر سلیقه</p>
+            <h2>دسته‌بندی‌های محبوب</h2>
+          </div>
+          <AppLink className="text-link" href="/products">
+            مشاهده همه <Icon name="arrow" size={17} />
+          </AppLink>
+        </div>
+        <div className="category-grid">
+          {categories.map((category, index) => (
+            <AppLink
+              href={`/products?category=${encodeURIComponent(category.slug)}`}
+              className={`category-card ${categoryTones[index % categoryTones.length]}`}
+              key={category.id}
+            >
+              <span>{categoryIcons[index % categoryIcons.length]}</span>
+              <div>
+                <h3>{category.name}</h3>
+                <p>{category.description || "مشاهده‌ی محصولات"}</p>
+              </div>
+              <Icon name="arrow" size={17} />
+            </AppLink>
+          ))}
+        </div>
+      </section>
+      <section className="section product-section">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">انتخاب‌شده برای شما</p>
+            <h2>محصولات تازه</h2>
+          </div>
+          <AppLink className="text-link" href="/products">
+            مشاهده همه <Icon name="arrow" size={17} />
+          </AppLink>
+        </div>
+        <ProductGrid {...catalog} />
+      </section>
+      <section className="member-banner" id="offers">
+        <div>
+          <p className="eyebrow">پیشنهاد ویژه‌ی اعضا</p>
+          <h2>به جمع نوکسا کلاب بپیوند.</h2>
+          <p>از تخفیف‌های شخصی‌سازی‌شده و خبرهای تازه زودتر باخبر شو.</p>
+        </div>
+        <div className="banner-shape">
+          N<span>+</span>
+        </div>
+      </section>
+    </main>
+  );
+}
+function CatalogPage({
+  categories,
+  category,
+}: {
+  categories: Category[];
+  category: string | null;
+}) {
+  const catalog = useProducts(
+    category ? `?category=${encodeURIComponent(category)}` : "?ordering=newest",
+  );
+  const selected = categories.find((item) => item.slug === category);
+  return (
+    <main className="catalog-page">
+      <div className="page-heading">
+        <p className="eyebrow">فروشگاه نوکسا</p>
+        <h1>{selected ? `محصولات ${selected.name}` : "همه محصولات"}</h1>
+        <p>
+          {selected?.description ||
+            "تمامی محصولات منتشرشده را از این بخش مشاهده و مقایسه کن."}
+        </p>
+      </div>
+      <nav className="category-filter" aria-label="فیلتر دسته‌بندی">
+        <AppLink href="/products" className={!category ? "active" : undefined}>
+          همه
+        </AppLink>
+        {categories.map((item) => (
+          <AppLink
+            href={`/products?category=${encodeURIComponent(item.slug)}`}
+            className={item.slug === category ? "active" : undefined}
+            key={item.id}
+          >
+            {item.name}
+          </AppLink>
+        ))}
+      </nav>
+      <ProductGrid {...catalog} />
+    </main>
+  );
+}
+function ProductPage({ slug }: { slug: string }) {
   const [product, setProduct] = useState<ProductDetail | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [hasError, setHasError] = useState(false);
-
+  const [error, setError] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
     setProduct(null);
     setSelectedImage(null);
-    setHasError(false);
-    fetch(`${apiBaseUrl}/api/v1/catalog/products/${slug}/`, { signal: controller.signal })
-      .then((response) => response.ok ? response.json() : Promise.reject())
-      .then((detail: ProductDetail) => {
-        setProduct(detail);
-        setSelectedImage(detail.images.find((image) => image.image_url)?.image_url ?? detail.primary_image);
+    setError(false);
+    fetch(
+      `${apiBaseUrl}/api/v1/catalog/products/${encodeURIComponent(slug)}/`,
+      { signal: controller.signal },
+    )
+      .then((response) => (response.ok ? response.json() : Promise.reject()))
+      .then((data: ProductDetail) => {
+        setProduct(data);
+        setSelectedImage(
+          data.images.find((image) => image.image_url)?.image_url ??
+            data.primary_image,
+        );
       })
-      .catch((error) => {
-        if (!(error instanceof DOMException && error.name === "AbortError")) setHasError(true);
+      .catch((reason) => {
+        if (!(reason instanceof DOMException && reason.name === "AbortError"))
+          setError(true);
       });
     return () => controller.abort();
   }, [slug]);
-
-  if (hasError) return <div className="product-detail-backdrop" role="presentation" onMouseDown={onClose}><section className="product-detail-dialog error-state" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}><button className="auth-close" type="button" onClick={onClose} aria-label="بستن جزئیات محصول"><Icon name="close" size={19} /></button><h2>محصول پیدا نشد</h2><p>این محصول در دسترس نیست یا انتشار آن متوقف شده است.</p></section></div>;
-  if (!product) return <div className="product-detail-backdrop" role="presentation" onMouseDown={onClose}><section className="product-detail-dialog product-detail-loading" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}><span className="detail-loader" /><p>در حال دریافت اطلاعات محصول…</p></section></div>;
-
-  const imageChoices = product.images.filter((image) => image.image_url);
-  const visibleImage = selectedImage ?? product.primary_image;
-  return <div className="product-detail-backdrop" role="presentation" onMouseDown={onClose}>
-    <section className="product-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="product-detail-title" onMouseDown={(event) => event.stopPropagation()}>
-      <button className="auth-close" type="button" onClick={onClose} aria-label="بستن جزئیات محصول"><Icon name="close" size={19} /></button>
-      <div className="detail-gallery"><div className="detail-main-image">{visibleImage ? <img src={visibleImage} alt={product.name} /> : <div className="image-fallback">{product.name.slice(0, 1)}</div>}{product.discount_percent > 0 && <span className="detail-discount">{product.discount_percent}٪ تخفیف</span>}</div>{imageChoices.length > 1 && <div className="detail-thumbnails">{imageChoices.map((image) => <button className={image.image_url === visibleImage ? "thumbnail active" : "thumbnail"} type="button" key={image.id} onClick={() => setSelectedImage(image.image_url)}><img src={image.image_url ?? ""} alt={image.alt_text || product.name} /></button>)}</div>}</div>
-      <div className="detail-content"><p className="eyebrow">{product.category.name}</p><h2 id="product-detail-title">{product.name}</h2><p className={product.in_stock ? "detail-stock available" : "detail-stock unavailable"}>{product.in_stock ? "موجود در انبار" : "ناموجود"}</p><div className="detail-price">{product.compare_at_price && <del>{formatPrice(product.compare_at_price)} تومان</del>}<strong>{formatPrice(product.price)} <small>تومان</small></strong></div><p className="detail-description">{product.description || product.short_description || "توضیحی برای این محصول ثبت نشده است."}</p><dl className="detail-meta"><div><dt>کد کالا</dt><dd dir="ltr">{product.sku}</dd></div><div><dt>دسته‌بندی</dt><dd>{product.category.name}</dd></div></dl><div className="detail-notice"><Icon name="shield" size={19} /><span>ضمانت اصالت کالا و امکان بازگشت طبق شرایط فروشگاه</span></div></div>
-    </section>
-  </div>;
+  if (error)
+    return (
+      <PageState
+        title="محصول پیدا نشد"
+        text="این محصول در دسترس نیست یا انتشار آن متوقف شده است."
+      />
+    );
+  if (!product)
+    return (
+      <main className="page-state">
+        <span className="detail-loader" />
+        <p>در حال دریافت اطلاعات محصول…</p>
+      </main>
+    );
+  const images = product.images.filter((image) => image.image_url);
+  const image = selectedImage ?? product.primary_image;
+  return (
+    <main className="product-page">
+      <div className="breadcrumbs">
+        <AppLink href="/">خانه</AppLink>
+        <span>/</span>
+        <AppLink
+          href={`/products?category=${encodeURIComponent(product.category.slug)}`}
+        >
+          {product.category.name}
+        </AppLink>
+        <span>/</span>
+        <span>{product.name}</span>
+      </div>
+      <section className="product-detail-layout">
+        <div className="detail-gallery">
+          <div className="detail-main-image">
+            {image ? (
+              <img src={image} alt={product.name} />
+            ) : (
+              <div className="image-fallback">{product.name.slice(0, 1)}</div>
+            )}
+            {product.discount_percent > 0 && (
+              <span className="detail-discount">
+                {product.discount_percent}٪ تخفیف
+              </span>
+            )}
+          </div>
+          {images.length > 1 && (
+            <div className="detail-thumbnails">
+              {images.map((item) => (
+                <button
+                  className={
+                    item.image_url === image ? "thumbnail active" : "thumbnail"
+                  }
+                  type="button"
+                  key={item.id}
+                  onClick={() => setSelectedImage(item.image_url)}
+                >
+                  <img
+                    src={item.image_url ?? ""}
+                    alt={item.alt_text || product.name}
+                  />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="detail-content">
+          <p className="eyebrow">{product.category.name}</p>
+          <h1>{product.name}</h1>
+          <p
+            className={
+              product.in_stock
+                ? "detail-stock available"
+                : "detail-stock unavailable"
+            }
+          >
+            {product.in_stock ? "موجود در انبار" : "ناموجود"}
+          </p>
+          <div className="detail-price">
+            {product.compare_at_price && (
+              <del>{formatPrice(product.compare_at_price)} تومان</del>
+            )}
+            <strong>
+              {formatPrice(product.price)} <small>تومان</small>
+            </strong>
+          </div>
+          <p className="detail-description">
+            {product.description ||
+              product.short_description ||
+              "توضیحی برای این محصول ثبت نشده است."}
+          </p>
+          <dl className="detail-meta">
+            <div>
+              <dt>کد کالا</dt>
+              <dd dir="ltr">{product.sku}</dd>
+            </div>
+            <div>
+              <dt>دسته‌بندی</dt>
+              <dd>{product.category.name}</dd>
+            </div>
+          </dl>
+          <div className="detail-notice">
+            <Icon name="shield" size={19} />
+            <span>ضمانت اصالت کالا و امکان بازگشت طبق شرایط فروشگاه</span>
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+}
+function PageState({ title, text }: { title: string; text: string }) {
+  return (
+    <main className="page-state">
+      <h1>{title}</h1>
+      <p>{text}</p>
+      <AppLink className="button button-primary" href="/products">
+        بازگشت به محصولات
+      </AppLink>
+    </main>
+  );
 }
 
 function App() {
+  const [route, setRoute] = useState<Route>(getRoute);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(false);
-  const [isAuthOpen, setIsAuthOpen] = useState(false);
-  const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [selectedProductSlug, setSelectedProductSlug] = useState<string | null>(null);
-  const [authUser, setAuthUser] = useState<AuthUser | null>(() => {
+  const [authOpen, setAuthOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [user, setUser] = useState<AuthUser | null>(() => {
     try {
-      const stored = sessionStorage.getItem("nexora-auth");
-      return stored ? (JSON.parse(stored) as AuthResponse).user : null;
+      const raw = sessionStorage.getItem("nexora-auth");
+      return raw ? (JSON.parse(raw) as AuthResponse).user : null;
     } catch {
       return null;
     }
   });
-
-  function handleAuthenticated(response: AuthResponse) {
-    sessionStorage.setItem("nexora-auth", JSON.stringify(response));
-    setAuthUser(response.user);
-    setIsAuthOpen(false);
-  }
-
-  function signOut() {
-    sessionStorage.removeItem("nexora-auth");
-    setAuthUser(null);
-    setIsProfileOpen(false);
-  }
-
+  useEffect(() => {
+    const update = () => setRoute(getRoute());
+    addEventListener("popstate", update);
+    return () => removeEventListener("popstate", update);
+  }, []);
   useEffect(() => {
     const controller = new AbortController();
-
-    async function loadCatalog() {
-      try {
-        const [categoriesResponse, productsResponse] = await Promise.all([
-          fetch(`${apiBaseUrl}/api/v1/catalog/categories/`, { signal: controller.signal }),
-          fetch(`${apiBaseUrl}/api/v1/catalog/products/?ordering=newest`, { signal: controller.signal }),
-        ]);
-        if (!categoriesResponse.ok || !productsResponse.ok) {
-          throw new Error("Catalog request failed");
-        }
-
-        const categoryData: Category[] = await categoriesResponse.json();
-        const productData: ProductListResponse = await productsResponse.json();
-        setCategories(categoryData);
-        setProducts(productData.results);
-      } catch (caught) {
-        if (!(caught instanceof DOMException && caught.name === "AbortError")) {
-          setError(true);
-        }
-      } finally {
-        if (!controller.signal.aborted) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    loadCatalog();
+    fetch(`${apiBaseUrl}/api/v1/catalog/categories/`, {
+      signal: controller.signal,
+    })
+      .then((response) => (response.ok ? response.json() : Promise.reject()))
+      .then((data: Category[]) => setCategories(data))
+      .catch(() => undefined);
     return () => controller.abort();
   }, []);
-
-  return <div className="app-shell">
-    <div className="announcement">ارسال رایگان برای سفارش‌های بالای ۲ میلیون تومان <span>✦</span> تا ۷ روز ضمانت بازگشت کالا</div>
-    <header className="site-header">
-      <a className="brand" href="#home" aria-label="خانه نوکسا"><span className="brand-mark">n</span><span>نوکسا</span></a>
-      <nav className="desktop-nav" aria-label="ناوبری اصلی"><a href="#products">فروشگاه</a><a href="#categories">دسته‌بندی‌ها</a><a href="#offers">پیشنهادها</a><a href="#about">درباره‌ی ما</a></nav>
-      <div className="header-actions"><button className="icon-button" aria-label="جست‌وجو"><Icon name="search" /></button><button className="icon-button" aria-label="علاقه‌مندی‌ها"><Icon name="heart" /></button><button className="cart-button" aria-label="سبد خرید"><Icon name="bag" /><span>۰</span></button>{authUser ? <button className="account-button signed-in" type="button" onClick={() => setIsProfileOpen(true)}><Icon name="user" size={17} /><span>{authUser.role === "admin" ? "مدیر" : "پروفایل"}</span></button> : <button className="account-button" type="button" onClick={() => setIsAuthOpen(true)}><Icon name="user" size={17} /><span>ورود | ثبت‌نام</span></button>}<button className="menu-button" aria-label="منو"><Icon name="menu" /></button></div>
-    </header>
-
-    <main id="home">
-      <section className="hero" aria-labelledby="hero-title">
-        <div className="hero-copy"><p className="eyebrow">انتخاب‌های تازه، هر روز</p><h1 id="hero-title">هر آنچه دوست داری،<br /><em>همین‌جا پیدا کن.</em></h1><p className="hero-description">از برندهای محبوب تا کشف‌های تازه؛ خریدی مطمئن و ساده، برای لحظه‌های مهم زندگی.</p><div className="hero-actions"><a className="button button-primary" href="#products">مشاهده‌ی محصولات <Icon name="arrow" size={18} /></a><a className="text-link" href="#categories">مشاهده‌ی دسته‌بندی‌ها</a></div><div className="hero-proof"><div className="avatar-stack"><span>م</span><span>س</span><span>ن</span></div><p>انتخاب بیش از <strong>۵۰٬۰۰۰</strong> مشتری</p></div></div>
-        <div className="hero-visual"><div className="hero-orbit orbit-one" /><div className="hero-orbit orbit-two" /><div className="hero-image-wrap"><img src="https://images.unsplash.com/photo-1492707892479-7bc8d5a4ee93?auto=format&fit=crop&w=1100&q=85" alt="مجموعه‌ای از محصولات منتخب" /></div><div className="floating-card product-float"><span className="float-icon">✦</span><div><small>محبوب این هفته</small><strong>استایل شخصی تو</strong></div></div><div className="floating-card rating-float"><span className="rating-star">★</span><div><strong>۴.۹ از ۵</strong><small>رضایت کاربران</small></div></div></div>
-      </section>
-
-      <section className="benefits" aria-label="مزیت‌های خرید"><div><span className="benefit-icon"><Icon name="truck" /></span><p><strong>ارسال سریع</strong><small>تحویل در کوتاه‌ترین زمان</small></p></div><div><span className="benefit-icon"><Icon name="shield" /></span><p><strong>خرید مطمئن</strong><small>ضمانت اصالت و بازگشت</small></p></div><div><span className="benefit-icon"><Icon name="support" /></span><p><strong>پشتیبانی همراه شما</strong><small>پاسخ‌گویی ۲۴ ساعته</small></p></div></section>
-
-      <section className="section categories-section" id="categories" aria-labelledby="categories-title"><div className="section-heading"><div><p className="eyebrow">یک انتخاب برای هر سلیقه</p><h2 id="categories-title">دسته‌بندی‌های محبوب</h2></div><a className="text-link" href="#products">مشاهده همه <Icon name="arrow" size={17} /></a></div><div className="category-grid">{isLoading && <p className="catalog-status">در حال دریافت دسته‌بندی‌ها…</p>}{!isLoading && !error && categories.map((category, index) => <a href={`#${category.slug}`} className={`category-card ${categoryTones[index % categoryTones.length]}`} key={category.id}><span>{categoryIcons[index % categoryIcons.length]}</span><div><h3>{category.name}</h3><p>{category.description || "مشاهده‌ی محصولات"}</p></div><Icon name="arrow" size={17} /></a>)}</div></section>
-
-      <section className="section product-section" id="products" aria-labelledby="products-title"><div className="section-heading"><div><p className="eyebrow">انتخاب‌شده برای شما</p><h2 id="products-title">محصولات تازه</h2></div><a className="text-link" href="#products">مشاهده همه <Icon name="arrow" size={17} /></a></div>{error ? <p className="catalog-status error">دریافت محصولات ممکن نشد. اتصال backend را بررسی کن.</p> : <div className="product-grid">{isLoading && <p className="catalog-status">در حال دریافت محصولات…</p>}{!isLoading && products.length === 0 && <p className="catalog-status">هنوز محصولی برای نمایش وجود ندارد.</p>}{products.map((product) => <article className="product-card" key={product.id}><button className="product-card-button" type="button" onClick={() => setSelectedProductSlug(product.slug)}><div className="product-image">{product.primary_image ? <img src={product.primary_image} alt={product.name} /> : <div className="image-fallback">{product.name.slice(0, 1)}</div>}<span className="product-badge">{product.category.name}</span></div><div className="product-content"><div className="product-meta"><span>{product.category.name}</span><span className={product.in_stock ? "in-stock" : "out-of-stock"}>{product.in_stock ? "موجود" : "ناموجود"}</span></div><h3>{product.name}</h3><div className="price-row"><div>{product.compare_at_price && <del>{formatPrice(product.compare_at_price)}</del>}<strong>{formatPrice(product.price)} <small>تومان</small></strong></div>{product.discount_percent > 0 && <b>{product.discount_percent}٪</b>}</div></div></button><button className="wish-button" type="button" aria-label={`افزودن ${product.name} به علاقه‌مندی‌ها`}><Icon name="heart" size={18} /></button></article>)}</div>}</section>
-
-      <section className="member-banner" id="offers"><div><p className="eyebrow">پیشنهاد ویژه‌ی اعضا</p><h2>به جمع نوکسا کلاب بپیوند.</h2><p>از تخفیف‌های شخصی‌سازی‌شده و خبرهای تازه زودتر باخبر شو.</p><a className="button button-dark" href="#join">عضویت در باشگاه <Icon name="arrow" size={18} /></a></div><div className="banner-shape">N<span>+</span></div></section>
-    </main>
-    <footer id="about"><a className="brand" href="#home"><span className="brand-mark">n</span><span>نوکسا</span></a><p>یک تجربه‌ی ساده‌تر برای انتخاب و خرید بهتر.</p><small>© ۱۴۰۵ نوکسا. تمامی حقوق محفوظ است.</small></footer>
-    {isAuthOpen && <AuthDialog onClose={() => setIsAuthOpen(false)} onAuthenticated={handleAuthenticated} />}
-    {authUser && isProfileOpen && <ProfileDialog user={authUser} onClose={() => setIsProfileOpen(false)} onSignOut={signOut} />}
-    {selectedProductSlug && <ProductDetailDialog slug={selectedProductSlug} onClose={() => setSelectedProductSlug(null)} />}
-  </div>;
+  const page =
+    route.name === "home" ? (
+      <HomePage categories={categories} />
+    ) : route.name === "catalog" ? (
+      <CatalogPage categories={categories} category={route.category} />
+    ) : route.name === "product" ? (
+      <ProductPage slug={route.slug} />
+    ) : (
+      <PageState title="صفحه پیدا نشد" text="نشانی واردشده معتبر نیست." />
+    );
+  return (
+    <div className="app-shell">
+      <Header
+        user={user}
+        signIn={() => setAuthOpen(true)}
+        profile={() => setProfileOpen(true)}
+      />
+      {page}
+      <footer id="about">
+        <AppLink className="brand" href="/">
+          <span className="brand-mark">n</span>
+          <span>نوکسا</span>
+        </AppLink>
+        <p>یک تجربه‌ی ساده‌تر برای انتخاب و خرید بهتر.</p>
+        <small>© ۱۴۰۵ نوکسا. تمامی حقوق محفوظ است.</small>
+      </footer>
+      {authOpen && (
+        <AuthDialog
+          onClose={() => setAuthOpen(false)}
+          onAuthenticated={(response) => {
+            sessionStorage.setItem("nexora-auth", JSON.stringify(response));
+            setUser(response.user);
+            setAuthOpen(false);
+          }}
+        />
+      )}
+      {user && profileOpen && (
+        <ProfileDialog
+          user={user}
+          onClose={() => setProfileOpen(false)}
+          onSignOut={() => {
+            sessionStorage.removeItem("nexora-auth");
+            setUser(null);
+            setProfileOpen(false);
+          }}
+        />
+      )}
+    </div>
+  );
 }
-
-createRoot(document.getElementById("root")!).render(<StrictMode><App /></StrictMode>);
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+);
