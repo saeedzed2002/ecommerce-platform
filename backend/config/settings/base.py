@@ -141,7 +141,18 @@ STORAGES = {
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {"hosts": [env("REDIS_URL", default="redis://redis:6379/0")]},
+        "CONFIG": {
+            "hosts": [
+                {
+                    "address": env("REDIS_URL", default="redis://redis:6379/0"),
+                    # `channels_redis` uses a blocking Redis read while waiting for
+                    # channel events. Keep that read open; Redis client 8 defaults
+                    # socket_timeout to five seconds, which disconnects WebSockets.
+                    "socket_timeout": None,
+                    "socket_connect_timeout": 5,
+                }
+            ]
+        },
     }
 }
 CELERY_BROKER_URL = env(

@@ -7,6 +7,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from apps.accounts.models import User
 from apps.chat.models import Conversation, Message
 from config.asgi import application
+from config.settings import base as base_settings
 
 
 @pytest.fixture
@@ -26,6 +27,13 @@ def admin() -> User:
         role=User.Role.ADMIN,
         is_staff=True,
     )
+
+
+def test_production_channel_layer_disables_blocking_read_socket_timeout() -> None:
+    host = base_settings.CHANNEL_LAYERS["default"]["CONFIG"]["hosts"][0]
+
+    assert host["socket_timeout"] is None
+    assert host["socket_connect_timeout"] == 5
 
 
 @pytest.fixture
