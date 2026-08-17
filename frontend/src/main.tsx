@@ -857,9 +857,11 @@ function CartPage({
 }
 
 function CheckoutPage({
+  user,
   cart,
   onOrderCreated,
 }: {
+  user: AuthUser | null;
   cart: Cart | null;
   onOrderCreated: () => void;
 }) {
@@ -880,6 +882,12 @@ function CheckoutPage({
     "Content-Type": "application/json",
   });
   useEffect(() => {
+    if (!user) {
+      setAddresses([]);
+      setSelected(null);
+      setMessage("");
+      return;
+    }
     fetch(`${apiBaseUrl}/api/v1/orders/addresses/`, { headers: headers() })
       .then((response) => (response.ok ? response.json() : Promise.reject()))
       .then((data: Address[]) => {
@@ -889,7 +897,7 @@ function CheckoutPage({
         );
       })
       .catch(() => setMessage("دریافت آدرس‌ها ناموفق بود."));
-  }, []);
+  }, [user?.id]);
   async function createAddress(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPending(true);
@@ -937,6 +945,13 @@ function CheckoutPage({
       setPending(false);
     }
   }
+  if (!user)
+    return (
+      <PageState
+        title="برای ثبت سفارش وارد شو"
+        text="آدرس‌ها و سفارش‌ها به حساب کاربری شما متصل می‌شوند."
+      />
+    );
   if (!cart?.items.length && !message)
     return (
       <PageState
@@ -1334,6 +1349,7 @@ function App() {
       />
     ) : route.name === "checkout" ? (
       <CheckoutPage
+        user={user}
         cart={cart}
         onOrderCreated={() => {
           setCart((current) =>
