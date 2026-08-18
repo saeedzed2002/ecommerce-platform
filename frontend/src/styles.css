@@ -1706,7 +1706,7 @@ footer small {
 }
 .admin-catalog-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 22px;
   align-items: start;
 }
@@ -1741,6 +1741,14 @@ footer small {
 }
 .admin-product-form .wide {
   grid-column: 1 / -1;
+}
+.admin-checkbox {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+}
+.admin-checkbox input {
+  min-height: 0;
 }
 .admin-product-form button {
   justify-self: start;
@@ -1792,6 +1800,39 @@ footer small {
 .admin-review-actions button:disabled {
   cursor: default;
   opacity: 0.45;
+}
+.admin-product-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 10px;
+}
+.admin-product-picker button {
+  min-height: 74px;
+  padding: 12px;
+  display: grid;
+  gap: 5px;
+  border: 1px solid #d7e1d4;
+  border-radius: 10px;
+  color: #3a4a3e;
+  background: #fff;
+  cursor: pointer;
+  text-align: right;
+  font:
+    0.72rem Vazirmatn,
+    Tahoma,
+    sans-serif;
+}
+.admin-product-picker button.active,
+.admin-product-picker button:hover {
+  border-color: #527b60;
+  background: #eef5eb;
+}
+.admin-product-picker span {
+  color: #718075;
+  font-size: 0.65rem;
+}
+.admin-product-reviews-section {
+  margin-top: 20px;
 }
 .orders-heading {
   margin-bottom: 18px;

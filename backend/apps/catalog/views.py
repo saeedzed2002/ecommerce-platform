@@ -1,6 +1,7 @@
 from decimal import Decimal, InvalidOperation
 
-from django.db.models import Prefetch, Q
+from django.db import transaction
+from django.db.models import Count, Prefetch, Q
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
@@ -17,6 +18,7 @@ from rest_framework.views import APIView
 from .models import Category, MobileSpecification, Product, ProductReview
 from .permissions import IsPlatformAdmin
 from .serializers import (
+    AdminProductListSerializer,
     AdminProductReviewSerializer,
     AdminProductSerializer,
     CategorySerializer,
@@ -254,9 +256,28 @@ class ProductRatingAPIView(APIView):
     patch = put
 
 
-class AdminProductCreateAPIView(CreateAPIView):
+class AdminProductListCreateAPIView(CreateAPIView):
     permission_classes = (IsPlatformAdmin,)
     serializer_class = AdminProductSerializer
+
+    def perform_create(self, serializer):
+        with transaction.atomic():
+            product = serializer.save()
+            for index, image in enumerate(self.request.FILES.getlist("images")):
+                product.images.create(
+                    image=image,
+                    alt_text=self.request.data.get("image_alt_text", ""),
+                    display_order=index,
+                )
+
+
+class AdminProductListAPIView(ListAPIView):
+    permission_classes = (IsPlatformAdmin,)
+    serializer_class = AdminProductListSerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        return Product.objects.annotate(review_count=Count("reviews")).order_by("name")
 
 
 class AdminProductReviewListAPIView(ListAPIView):
@@ -265,6 +286,8 @@ class AdminProductReviewListAPIView(ListAPIView):
 
     def get_queryset(self):
         queryset = ProductReview.objects.select_related("product", "user", "parent")
+        product_slug = self.kwargs["slug"]
+        queryset = queryset.filter(product__slug=product_slug)
         moderation_status = self.request.query_params.get("status", "").strip()
         if moderation_status:
             valid_statuses = {

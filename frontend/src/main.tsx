@@ -126,6 +126,13 @@ type AdminReview = {
   moderation_status: "approved" | "rejected";
   created_at: string;
 };
+type AdminProduct = {
+  id: number;
+  name: string;
+  slug: string;
+  status: "draft" | "published" | "archived";
+  review_count: number;
+};
 type AuthResponse = { access: string; refresh: string; user: AuthUser };
 type OrderItem = {
   id: number;
@@ -216,6 +223,7 @@ type Route =
   | { name: "admin-dashboard" }
   | { name: "admin-orders" }
   | { name: "admin-catalog" }
+  | { name: "admin-reviews" }
   | { name: "chat" }
   | { name: "admin-chat" }
   | { name: "not-found" };
@@ -253,6 +261,8 @@ function getRoute(): Route {
     return { name: "admin-orders" };
   if (parts[0] === "admin" && parts[1] === "catalog" && parts.length === 2)
     return { name: "admin-catalog" };
+  if (parts[0] === "admin" && parts[1] === "reviews" && parts.length === 2)
+    return { name: "admin-reviews" };
   if (parts[0] === "chat" && parts.length === 1) return { name: "chat" };
   if (parts[0] === "admin" && parts[1] === "chat" && parts.length === 2)
     return { name: "admin-chat" };
@@ -1817,7 +1827,10 @@ function ProfilePage({
                 مدیریت سفارش‌ها
               </AppLink>
               <AppLink className="admin-dashboard-link" href="/admin/catalog">
-                کالاها و نظرها
+                ایجاد کالا
+              </AppLink>
+              <AppLink className="admin-dashboard-link" href="/admin/reviews">
+                مدیریت نظرها
               </AppLink>
               <AppLink className="admin-dashboard-link" href="/admin/chat">
                 گفت‌وگوهای پشتیبانی
@@ -2055,7 +2068,10 @@ function AdminDashboardPage({ user }: { user: AuthUser | null }) {
               مدیریت سفارش‌ها
             </AppLink>
             <AppLink className="admin-dashboard-link" href="/admin/catalog">
-              کالاها و نظرها
+              ایجاد کالا
+            </AppLink>
+            <AppLink className="admin-dashboard-link" href="/admin/reviews">
+              مدیریت نظرها
             </AppLink>
           </section>
           <section className="admin-overview-card">
@@ -2096,10 +2112,10 @@ function AdminDashboardPage({ user }: { user: AuthUser | null }) {
 
 function AdminCatalogPage({ user }: { user: AuthUser | null }) {
   const [categories, setCategories] = useState<Category[]>([]);
-  const [reviews, setReviews] = useState<AdminReview[]>([]);
-  const [reviewStatus, setReviewStatus] = useState("");
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState(false);
+  const [images, setImages] = useState<File[]>([]);
+  const [imageAltText, setImageAltText] = useState("");
   const [product, setProduct] = useState({
     category: "",
     product_type: "laptop",
@@ -2113,6 +2129,15 @@ function AdminCatalogPage({ user }: { user: AuthUser | null }) {
     compare_at_price: "",
     stock_quantity: "0",
     status: "draft",
+    is_featured: false,
+    processor: "",
+    ram_gb: "",
+    storage_gb: "",
+    display_size_inches: "",
+    graphics: "",
+    camera_megapixels: "",
+    network: "5g",
+    battery_mah: "",
   });
 
   useEffect(() => {
@@ -2129,22 +2154,6 @@ function AdminCatalogPage({ user }: { user: AuthUser | null }) {
       .catch(() => setMessage("دریافت دسته‌بندی‌ها ناموفق بود."));
   }, [user?.id, user?.role]);
 
-  useEffect(() => {
-    if (user?.role !== "admin") return;
-    const params = reviewStatus ? `?status=${reviewStatus}` : "";
-    fetchAuthenticated(`/api/v1/catalog/admin/reviews/${params}`)
-      .then(async (response) => {
-        if (!response.ok) throw new Error(await getError(response));
-        return response.json() as Promise<{ results: AdminReview[] }>;
-      })
-      .then((data) => setReviews(data.results))
-      .catch((reason) =>
-        setMessage(
-          reason instanceof Error ? reason.message : "دریافت نظرها ناموفق بود.",
-        ),
-      );
-  }, [user?.id, user?.role, reviewStatus]);
-
   if (user?.role !== "admin")
     return (
       <PageState title="دسترسی ندارید" text="این بخش فقط برای مدیران است." />
@@ -2159,17 +2168,47 @@ function AdminCatalogPage({ user }: { user: AuthUser | null }) {
     setPending(true);
     setMessage("");
     try {
+      const formData = new FormData();
+      formData.set("category", product.category);
+      formData.set("product_type", product.product_type);
+      formData.set("name", product.name);
+      formData.set("slug", product.slug);
+      formData.set("sku", product.sku);
+      formData.set("brand", product.brand);
+      formData.set("short_description", product.short_description);
+      formData.set("description", product.description);
+      formData.set("price", product.price);
+      formData.set("stock_quantity", product.stock_quantity);
+      formData.set("status", product.status);
+      formData.set("is_featured", String(product.is_featured));
+      if (product.compare_at_price)
+        formData.set("compare_at_price", product.compare_at_price);
+      if (product.product_type === "laptop") {
+        formData.set("laptop_specification.processor", product.processor);
+        formData.set("laptop_specification.ram_gb", product.ram_gb);
+        formData.set("laptop_specification.storage_gb", product.storage_gb);
+        formData.set(
+          "laptop_specification.display_size_inches",
+          product.display_size_inches,
+        );
+        formData.set("laptop_specification.graphics", product.graphics);
+      } else {
+        formData.set("mobile_specification.ram_gb", product.ram_gb);
+        formData.set("mobile_specification.storage_gb", product.storage_gb);
+        formData.set(
+          "mobile_specification.camera_megapixels",
+          product.camera_megapixels,
+        );
+        formData.set("mobile_specification.network", product.network);
+        formData.set("mobile_specification.battery_mah", product.battery_mah);
+      }
+      formData.set("image_alt_text", imageAltText);
+      images.forEach((image) => formData.append("images", image));
       const response = await fetchAuthenticated(
         "/api/v1/catalog/admin/products/",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...product,
-            category: Number(product.category),
-            stock_quantity: Number(product.stock_quantity),
-            compare_at_price: product.compare_at_price || null,
-          }),
+          body: formData,
         },
       );
       if (!response.ok) throw new Error(await getError(response));
@@ -2185,41 +2224,20 @@ function AdminCatalogPage({ user }: { user: AuthUser | null }) {
         price: "",
         compare_at_price: "",
         stock_quantity: "0",
+        processor: "",
+        ram_gb: "",
+        storage_gb: "",
+        display_size_inches: "",
+        graphics: "",
+        camera_megapixels: "",
+        network: "5g",
+        battery_mah: "",
       }));
+      setImages([]);
+      setImageAltText("");
     } catch (reason) {
       setMessage(
         reason instanceof Error ? reason.message : "ایجاد کالا ناموفق بود.",
-      );
-    } finally {
-      setPending(false);
-    }
-  }
-
-  async function moderateReview(
-    review: AdminReview,
-    moderation_status: "approved" | "rejected",
-  ) {
-    setPending(true);
-    setMessage("");
-    try {
-      const response = await fetchAuthenticated(
-        `/api/v1/catalog/admin/reviews/${review.id}/`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ moderation_status }),
-        },
-      );
-      if (!response.ok) throw new Error(await getError(response));
-      const updated = (await response.json()) as AdminReview;
-      setReviews((items) =>
-        items.map((item) => (item.id === updated.id ? updated : item)),
-      );
-    } catch (reason) {
-      setMessage(
-        reason instanceof Error
-          ? reason.message
-          : "به‌روزرسانی نظر ناموفق بود.",
       );
     } finally {
       setPending(false);
@@ -2230,11 +2248,8 @@ function AdminCatalogPage({ user }: { user: AuthUser | null }) {
     <main className="profile-page admin-catalog-page">
       <div className="page-heading">
         <p className="eyebrow">مدیریت کاتالوگ</p>
-        <h1>ایجاد کالا و رسیدگی به نظرها</h1>
-        <p>
-          نظرهای جدید به‌صورت عادی نمایش داده می‌شوند؛ رد کردن آن‌ها را از نمایش
-          عمومی خارج می‌کند.
-        </p>
+        <h1>ایجاد کالا</h1>
+        <p>تمام فیلدهای اصلی، مشخصات نوع کالا و تصویرهای محصول را ثبت کن.</p>
       </div>
       {message && <p className="orders-state error">{message}</p>}
       <div className="admin-catalog-grid">
@@ -2349,6 +2364,142 @@ function AdminCatalogPage({ user }: { user: AuthUser | null }) {
                 <option value="published">منتشرشده</option>
               </select>
             </label>
+            <label className="admin-checkbox">
+              <input
+                type="checkbox"
+                checked={product.is_featured}
+                onChange={(event) =>
+                  setProduct((current) => ({
+                    ...current,
+                    is_featured: event.target.checked,
+                  }))
+                }
+              />
+              کالای ویژه
+            </label>
+            {product.product_type === "laptop" ? (
+              <>
+                <label>
+                  پردازنده
+                  <input
+                    required
+                    value={product.processor}
+                    onChange={(event) =>
+                      updateProduct("processor", event.target.value)
+                    }
+                  />
+                </label>
+                <label>
+                  رم
+                  <input
+                    required
+                    type="number"
+                    min="1"
+                    value={product.ram_gb}
+                    onChange={(event) =>
+                      updateProduct("ram_gb", event.target.value)
+                    }
+                  />
+                </label>
+                <label>
+                  حافظه داخلی
+                  <input
+                    required
+                    type="number"
+                    min="1"
+                    value={product.storage_gb}
+                    onChange={(event) =>
+                      updateProduct("storage_gb", event.target.value)
+                    }
+                  />
+                </label>
+                <label>
+                  اندازهٔ نمایشگر
+                  <input
+                    required
+                    type="number"
+                    min="1"
+                    step="0.1"
+                    value={product.display_size_inches}
+                    onChange={(event) =>
+                      updateProduct("display_size_inches", event.target.value)
+                    }
+                  />
+                </label>
+                <label className="wide">
+                  گرافیک
+                  <input
+                    value={product.graphics}
+                    onChange={(event) =>
+                      updateProduct("graphics", event.target.value)
+                    }
+                  />
+                </label>
+              </>
+            ) : (
+              <>
+                <label>
+                  رم
+                  <input
+                    required
+                    type="number"
+                    min="1"
+                    value={product.ram_gb}
+                    onChange={(event) =>
+                      updateProduct("ram_gb", event.target.value)
+                    }
+                  />
+                </label>
+                <label>
+                  حافظه داخلی
+                  <input
+                    required
+                    type="number"
+                    min="1"
+                    value={product.storage_gb}
+                    onChange={(event) =>
+                      updateProduct("storage_gb", event.target.value)
+                    }
+                  />
+                </label>
+                <label>
+                  دوربین اصلی
+                  <input
+                    required
+                    type="number"
+                    min="1"
+                    value={product.camera_megapixels}
+                    onChange={(event) =>
+                      updateProduct("camera_megapixels", event.target.value)
+                    }
+                  />
+                </label>
+                <label>
+                  شبکه
+                  <select
+                    value={product.network}
+                    onChange={(event) =>
+                      updateProduct("network", event.target.value)
+                    }
+                  >
+                    <option value="4g">4G</option>
+                    <option value="5g">5G</option>
+                  </select>
+                </label>
+                <label className="wide">
+                  ظرفیت باتری
+                  <input
+                    required
+                    type="number"
+                    min="1"
+                    value={product.battery_mah}
+                    onChange={(event) =>
+                      updateProduct("battery_mah", event.target.value)
+                    }
+                  />
+                </label>
+              </>
+            )}
             <label className="wide">
               توضیح کوتاه
               <input
@@ -2368,6 +2519,26 @@ function AdminCatalogPage({ user }: { user: AuthUser | null }) {
                 }
               />
             </label>
+            <label className="wide">
+              تصویرهای کالا
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={(event) =>
+                  setImages(Array.from(event.target.files ?? []))
+                }
+              />
+            </label>
+            <label className="wide">
+              متن جایگزین تصویرها
+              <input
+                value={imageAltText}
+                maxLength={180}
+                onChange={(event) => setImageAltText(event.target.value)}
+                placeholder="مثلاً نمای روبه‌روی محصول"
+              />
+            </label>
             <button
               className="button button-primary"
               type="submit"
@@ -2377,9 +2548,125 @@ function AdminCatalogPage({ user }: { user: AuthUser | null }) {
             </button>
           </form>
         </section>
-        <section className="orders-section">
+      </div>
+    </main>
+  );
+}
+
+function AdminReviewsPage({ user }: { user: AuthUser | null }) {
+  const [products, setProducts] = useState<AdminProduct[]>([]);
+  const [selectedProduct, setSelectedProduct] = useState<AdminProduct | null>(
+    null,
+  );
+  const [reviews, setReviews] = useState<AdminReview[]>([]);
+  const [reviewStatus, setReviewStatus] = useState("");
+  const [message, setMessage] = useState("");
+  const [pending, setPending] = useState(false);
+
+  useEffect(() => {
+    if (user?.role !== "admin") return;
+    fetchAuthenticated("/api/v1/catalog/admin/products/list/")
+      .then(async (response) => {
+        if (!response.ok) throw new Error(await getError(response));
+        return response.json() as Promise<AdminProduct[]>;
+      })
+      .then(setProducts)
+      .catch((reason) =>
+        setMessage(
+          reason instanceof Error
+            ? reason.message
+            : "دریافت کالاها ناموفق بود.",
+        ),
+      );
+  }, [user?.id, user?.role]);
+
+  useEffect(() => {
+    if (!selectedProduct) {
+      setReviews([]);
+      return;
+    }
+    const params = reviewStatus ? `?status=${reviewStatus}` : "";
+    fetchAuthenticated(
+      `/api/v1/catalog/admin/products/${encodeURIComponent(selectedProduct.slug)}/reviews/${params}`,
+    )
+      .then(async (response) => {
+        if (!response.ok) throw new Error(await getError(response));
+        return response.json() as Promise<{ results: AdminReview[] }>;
+      })
+      .then((data) => setReviews(data.results))
+      .catch((reason) =>
+        setMessage(
+          reason instanceof Error ? reason.message : "دریافت نظرها ناموفق بود.",
+        ),
+      );
+  }, [selectedProduct?.slug, reviewStatus]);
+
+  if (user?.role !== "admin")
+    return (
+      <PageState title="دسترسی ندارید" text="این بخش فقط برای مدیران است." />
+    );
+
+  async function moderateReview(
+    review: AdminReview,
+    moderation_status: "approved" | "rejected",
+  ) {
+    setPending(true);
+    try {
+      const response = await fetchAuthenticated(
+        `/api/v1/catalog/admin/reviews/${review.id}/`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ moderation_status }),
+        },
+      );
+      if (!response.ok) throw new Error(await getError(response));
+      const updated = (await response.json()) as AdminReview;
+      setReviews((items) =>
+        items.map((item) => (item.id === updated.id ? updated : item)),
+      );
+    } catch (reason) {
+      setMessage(
+        reason instanceof Error
+          ? reason.message
+          : "به‌روزرسانی نظر ناموفق بود.",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <main className="profile-page admin-catalog-page">
+      <div className="page-heading">
+        <p className="eyebrow">مدیریت نظرها</p>
+        <h1>نظرهای هر محصول</h1>
+        <p>
+          ابتدا کالا را انتخاب کن؛ فقط commentهای همان کالا نمایش داده می‌شوند.
+        </p>
+      </div>
+      {message && <p className="orders-state error">{message}</p>}
+      <section className="orders-section">
+        <div className="admin-product-picker">
+          {products.map((product) => (
+            <button
+              key={product.id}
+              type="button"
+              className={
+                selectedProduct?.id === product.id ? "active" : undefined
+              }
+              onClick={() => setSelectedProduct(product)}
+            >
+              <strong>{product.name}</strong>
+              <span>{product.review_count} نظر</span>
+            </button>
+          ))}
+        </div>
+      </section>
+      {selectedProduct && (
+        <section className="orders-section admin-product-reviews-section">
           <div className="orders-heading">
-            <h2>نظرهای محصول</h2>
+            <h2>نظرهای {selectedProduct.name}</h2>
             <select
               value={reviewStatus}
               onChange={(event) => setReviewStatus(event.target.value)}
@@ -2394,10 +2681,8 @@ function AdminCatalogPage({ user }: { user: AuthUser | null }) {
               <article className="order-card" key={review.id}>
                 <div className="order-card-header">
                   <div>
-                    <strong>{review.product_name}</strong>
-                    <span>
-                      {review.customer_name} — {review.customer_phone}
-                    </span>
+                    <strong>{review.customer_name}</strong>
+                    <span dir="ltr">{review.customer_phone}</span>
                   </div>
                   <span className={`review-status ${review.moderation_status}`}>
                     {review.moderation_status === "approved"
@@ -2429,11 +2714,11 @@ function AdminCatalogPage({ user }: { user: AuthUser | null }) {
               </article>
             ))}
             {!reviews.length && (
-              <p className="orders-state">نظری برای این فیلتر وجود ندارد.</p>
+              <p className="orders-state">نظری برای این کالا وجود ندارد.</p>
             )}
           </div>
         </section>
-      </div>
+      )}
     </main>
   );
 }
@@ -3840,6 +4125,8 @@ function App() {
       <AdminOrdersPage user={user} />
     ) : route.name === "admin-catalog" ? (
       <AdminCatalogPage user={user} />
+    ) : route.name === "admin-reviews" ? (
+      <AdminReviewsPage user={user} />
     ) : route.name === "chat" ? (
       <ChatPage user={user} />
     ) : route.name === "admin-chat" ? (

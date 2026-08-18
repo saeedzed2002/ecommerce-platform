@@ -1,6 +1,8 @@
 from decimal import Decimal
 
 import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import override_settings
 from rest_framework.test import APIClient
 
 from apps.accounts.models import User
@@ -303,7 +305,15 @@ def test_admin_can_create_products_and_moderate_reviews() -> None:
                 "slug": "unauthorized-product",
                 "sku": "UNAUTHORIZED",
                 "price": "1000000",
+                "laptop_specification": {
+                    "processor": "Core Ultra 7",
+                    "ram_gb": 16,
+                    "storage_gb": 1024,
+                    "display_size_inches": "14.0",
+                    "graphics": "",
+                },
             },
+            format="json",
         ).status_code
         == 403
     )
@@ -320,9 +330,19 @@ def test_admin_can_create_products_and_moderate_reviews() -> None:
             "price": "1000000",
             "stock_quantity": 2,
             "status": "published",
+            "laptop_specification": {
+                "processor": "Core Ultra 7",
+                "ram_gb": 16,
+                "storage_gb": 1024,
+                "display_size_inches": "14.0",
+                "graphics": "",
+            },
         },
+        format="json",
     )
-    reviews_response = client.get("/api/v1/catalog/admin/reviews/")
+    reviews_response = client.get(
+        f"/api/v1/catalog/admin/products/{product.slug}/reviews/"
+    )
     moderation_response = client.patch(
         f"/api/v1/catalog/admin/reviews/{review.id}/",
         {"moderation_status": "rejected"},
@@ -338,3 +358,58 @@ def test_admin_can_create_products_and_moderate_reviews() -> None:
     assert moderation_response.status_code == 200
     assert moderation_response.data["moderation_status"] == "rejected"
     assert public_reviews.data["results"] == []
+
+
+@pytest.mark.django_db
+def test_admin_product_creation_accepts_type_details_and_multiple_images(
+    tmp_path,
+) -> None:
+    category = Category.objects.create(name="Mobiles", slug="mobiles")
+    admin = User.objects.create_user(
+        phone="989198765432", role=User.Role.ADMIN, is_staff=True
+    )
+    client = APIClient()
+    client.force_authenticate(admin)
+
+    with override_settings(
+        STORAGES={
+            "default": {
+                "BACKEND": "django.core.files.storage.FileSystemStorage",
+                "OPTIONS": {"location": str(tmp_path)},
+            }
+        }
+    ):
+        response = client.post(
+            "/api/v1/catalog/admin/products/",
+            {
+                "category": str(category.id),
+                "product_type": "mobile",
+                "name": "Admin mobile",
+                "slug": "admin-mobile",
+                "sku": "ADMIN-MOBILE-001",
+                "price": "1000000",
+                "stock_quantity": "2",
+                "status": "draft",
+                "mobile_specification.ram_gb": "12",
+                "mobile_specification.storage_gb": "256",
+                "mobile_specification.camera_megapixels": "50",
+                "mobile_specification.network": "5g",
+                "mobile_specification.battery_mah": "5000",
+                "images": [
+                    SimpleUploadedFile(
+                        "front.jpg", b"front", content_type="image/jpeg"
+                    ),
+                    SimpleUploadedFile("back.jpg", b"back", content_type="image/jpeg"),
+                ],
+                "image_alt_text": "Product image",
+            },
+            format="multipart",
+        )
+
+    assert response.status_code == 201
+    created = Product.objects.get(slug="admin-mobile")
+    assert created.mobile_specification.ram_gb == 12
+    assert list(created.images.values_list("alt_text", flat=True)) == [
+        "Product image",
+        "Product image",
+    ]

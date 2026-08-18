@@ -155,6 +155,10 @@ class ProductReviewSerializer(serializers.ModelSerializer):
 
 
 class AdminProductSerializer(serializers.ModelSerializer):
+    laptop_specification = LaptopSpecificationSerializer(required=False)
+    mobile_specification = MobileSpecificationSerializer(required=False)
+    images = ProductImageSerializer(many=True, read_only=True)
+
     class Meta:
         model = Product
         fields = (
@@ -172,9 +176,54 @@ class AdminProductSerializer(serializers.ModelSerializer):
             "stock_quantity",
             "status",
             "is_featured",
+            "laptop_specification",
+            "mobile_specification",
+            "images",
             "created_at",
         )
         read_only_fields = ("id", "created_at")
+
+    def validate(self, attrs: dict) -> dict:
+        product_type = attrs.get("product_type", Product.Type.LAPTOP)
+        laptop_specification = attrs.get("laptop_specification")
+        mobile_specification = attrs.get("mobile_specification")
+        if product_type == Product.Type.LAPTOP:
+            if mobile_specification is not None:
+                raise serializers.ValidationError(
+                    {"mobile_specification": "Mobile details do not apply to laptops."}
+                )
+            if laptop_specification is None:
+                raise serializers.ValidationError(
+                    {"laptop_specification": "Laptop details are required."}
+                )
+        if product_type == Product.Type.MOBILE:
+            if laptop_specification is not None:
+                raise serializers.ValidationError(
+                    {"laptop_specification": "Laptop details do not apply to mobiles."}
+                )
+            if mobile_specification is None:
+                raise serializers.ValidationError(
+                    {"mobile_specification": "Mobile details are required."}
+                )
+        return attrs
+
+    def create(self, validated_data: dict) -> Product:
+        laptop_specification = validated_data.pop("laptop_specification", None)
+        mobile_specification = validated_data.pop("mobile_specification", None)
+        product = Product.objects.create(**validated_data)
+        if laptop_specification is not None:
+            LaptopSpecification.objects.create(product=product, **laptop_specification)
+        if mobile_specification is not None:
+            MobileSpecification.objects.create(product=product, **mobile_specification)
+        return product
+
+
+class AdminProductListSerializer(serializers.ModelSerializer):
+    review_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = Product
+        fields = ("id", "name", "slug", "status", "review_count")
 
 
 class AdminProductReviewSerializer(serializers.ModelSerializer):

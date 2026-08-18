@@ -1,7 +1,8 @@
 from django.urls import path
 
 from .views import (
-    AdminProductCreateAPIView,
+    AdminProductListAPIView,
+    AdminProductListCreateAPIView,
     AdminProductReviewListAPIView,
     AdminProductReviewModerationAPIView,
     CategoryListAPIView,
@@ -16,11 +17,16 @@ app_name = "catalog"
 urlpatterns = [
     path(
         "admin/products/",
-        AdminProductCreateAPIView.as_view(),
+        AdminProductListCreateAPIView.as_view(),
         name="admin-product-create",
     ),
     path(
-        "admin/reviews/",
+        "admin/products/list/",
+        AdminProductListAPIView.as_view(),
+        name="admin-product-list",
+    ),
+    path(
+        "admin/products/<slug:slug>/reviews/",
         AdminProductReviewListAPIView.as_view(),
         name="admin-review-list",
     ),
