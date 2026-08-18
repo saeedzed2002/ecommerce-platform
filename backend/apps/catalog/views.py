@@ -1,14 +1,21 @@
 from decimal import Decimal, InvalidOperation
 
-from django.db.models import Q
+from django.db import IntegrityError
+from django.db.models import Prefetch, Q
+from django.shortcuts import get_object_or_404
+from rest_framework import status
 from rest_framework.exceptions import ValidationError
-from rest_framework.generics import ListAPIView, RetrieveAPIView
+from rest_framework.generics import ListAPIView, ListCreateAPIView, RetrieveAPIView
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
 
-from .models import Category, MobileSpecification, Product
+from .models import Category, MobileSpecification, Product, ProductReview
 from .serializers import (
     CategorySerializer,
     ProductDetailSerializer,
     ProductListSerializer,
+    ProductReviewCreateSerializer,
+    ProductReviewSerializer,
 )
 
 
@@ -131,3 +138,63 @@ class ProductDetailAPIView(RetrieveAPIView):
         .select_related("laptop_specification", "mobile_specification")
         .prefetch_related("images")
     )
+
+
+class ProductReviewListCreateAPIView(ListCreateAPIView):
+    permission_classes = (AllowAny,)
+
+    def get_permissions(self):
+        if self.request.method == "POST":
+            return (IsAuthenticated(),)
+        return super().get_permissions()
+
+    def get_product(self) -> Product:
+        if not hasattr(self, "_product"):
+            self._product = get_object_or_404(
+                Product.objects.filter(
+                    status=Product.Status.PUBLISHED,
+                    category__is_active=True,
+                ),
+                slug=self.kwargs["slug"],
+            )
+        return self._product
+
+    def get_queryset(self):
+        return (
+            ProductReview.objects.filter(
+                product=self.get_product(), parent__isnull=True
+            )
+            .select_related("user")
+            .prefetch_related(
+                Prefetch(
+                    "replies",
+                    queryset=ProductReview.objects.select_related("user").order_by(
+                        "created_at", "id"
+                    ),
+                )
+            )
+        )
+
+    def get_serializer_class(self):
+        if self.request.method == "POST":
+            return ProductReviewCreateSerializer
+        return ProductReviewSerializer
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["product"] = self.get_product()
+        return context
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            review = serializer.save()
+        except IntegrityError as error:
+            raise ValidationError(
+                {"detail": "You have already reviewed this product."}
+            ) from error
+        response_serializer = ProductReviewSerializer(
+            review, context=self.get_serializer_context()
+        )
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)

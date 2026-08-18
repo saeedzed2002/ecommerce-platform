@@ -3,12 +3,14 @@ from decimal import Decimal
 import pytest
 from rest_framework.test import APIClient
 
+from apps.accounts.models import User
 from apps.catalog.models import (
     Category,
     LaptopSpecification,
     MobileSpecification,
     Product,
     ProductImage,
+    ProductReview,
 )
 
 
@@ -165,3 +167,94 @@ def test_product_api_rejects_invalid_filter_values() -> None:
 
     assert response.status_code == 400
     assert "network" in response.data
+
+
+@pytest.mark.django_db
+def test_product_reviews_require_authentication_and_expose_rating_summary() -> None:
+    category = Category.objects.create(name="Laptops", slug="laptops")
+    product = create_product(category, slug="reviewed-laptop")
+    customer = User.objects.create_user(phone="989121234567")
+    client = APIClient()
+
+    anonymous_response = client.post(
+        f"/api/v1/catalog/products/{product.slug}/reviews/",
+        {"body": "A well-balanced laptop.", "rating": 5},
+    )
+
+    assert anonymous_response.status_code == 401
+
+    client.force_authenticate(customer)
+    create_response = client.post(
+        f"/api/v1/catalog/products/{product.slug}/reviews/",
+        {"body": "A well-balanced laptop.", "rating": 5},
+    )
+    duplicate_response = client.post(
+        f"/api/v1/catalog/products/{product.slug}/reviews/",
+        {"body": "A second root review.", "rating": 4},
+    )
+    invalid_rating_response = client.post(
+        f"/api/v1/catalog/products/{product.slug}/reviews/",
+        {"body": "A bad rating.", "rating": 6},
+    )
+    detail_response = APIClient().get(f"/api/v1/catalog/products/{product.slug}/")
+
+    assert create_response.status_code == 201
+    assert create_response.data["author_label"] == "کاربر 4567"
+    assert duplicate_response.status_code == 400
+    assert invalid_rating_response.status_code == 400
+    assert detail_response.data["rating_summary"] == {"average": 5.0, "count": 1}
+
+
+@pytest.mark.django_db
+def test_product_review_reply_is_limited_to_the_same_root_review() -> None:
+    category = Category.objects.create(name="Mobiles", slug="mobiles")
+    product = create_product(category, slug="reviewed-mobile")
+    other_product = create_product(category, slug="other-mobile")
+    author = User.objects.create_user(phone="989121234567")
+    responder = User.objects.create_user(phone="989198765432")
+    root_review = ProductReview.objects.create(
+        product=product,
+        user=author,
+        body="Battery life is great.",
+        rating=4,
+    )
+    client = APIClient()
+    client.force_authenticate(responder)
+
+    reply_response = client.post(
+        f"/api/v1/catalog/products/{product.slug}/reviews/",
+        {"body": "Thanks for the useful review.", "parent": root_review.id},
+    )
+    invalid_rating_response = client.post(
+        f"/api/v1/catalog/products/{product.slug}/reviews/",
+        {"body": "This cannot be rated.", "parent": root_review.id, "rating": 5},
+    )
+    invalid_product_response = client.post(
+        f"/api/v1/catalog/products/{other_product.slug}/reviews/",
+        {"body": "This targets another product.", "parent": root_review.id},
+    )
+    list_response = APIClient().get(f"/api/v1/catalog/products/{product.slug}/reviews/")
+
+    assert reply_response.status_code == 201
+    assert invalid_rating_response.status_code == 400
+    assert invalid_product_response.status_code == 400
+    assert list_response.status_code == 200
+    assert list_response.data["results"] == [
+        {
+            "id": root_review.id,
+            "body": "Battery life is great.",
+            "rating": 4,
+            "author_label": "کاربر 4567",
+            "created_at": list_response.data["results"][0]["created_at"],
+            "replies": [
+                {
+                    "id": reply_response.data["id"],
+                    "body": "Thanks for the useful review.",
+                    "author_label": "کاربر 5432",
+                    "created_at": list_response.data["results"][0]["replies"][0][
+                        "created_at"
+                    ],
+                }
+            ],
+        }
+    ]
