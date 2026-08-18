@@ -373,11 +373,24 @@ function AppLink({
     </a>
   );
 }
-function getError(response: Response) {
-  return response
-    .json()
-    .then((body: { detail?: string }) => body.detail ?? "عملیات انجام نشد.")
-    .catch(() => "ارتباط با سرور برقرار نشد.");
+async function getError(response: Response) {
+  try {
+    const body: unknown = await response.json();
+    if (typeof body === "object" && body !== null) {
+      const data = body as Record<string, unknown>;
+      if (typeof data.detail === "string") return data.detail;
+      const messages = Object.entries(data).flatMap(([field, value]) => {
+        const items = Array.isArray(value) ? value : [value];
+        return items
+          .filter((item): item is string => typeof item === "string")
+          .map((item) => `${field}: ${item}`);
+      });
+      if (messages.length) return messages.join(" — ");
+    }
+    return "عملیات انجام نشد.";
+  } catch {
+    return "ارتباط با سرور برقرار نشد.";
+  }
 }
 function getStoredAuth() {
   try {
@@ -2165,6 +2178,14 @@ function AdminCatalogPage({ user }: { user: AuthUser | null }) {
 
   async function createProduct(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const price = Number(product.price);
+    const compareAtPrice = Number(product.compare_at_price);
+    if (product.compare_at_price && compareAtPrice <= price) {
+      setMessage(
+        "قیمت پیش از تخفیف باید از قیمت فروش بزرگ‌تر باشد؛ اگر تخفیف ندارید این فیلد را خالی بگذارید.",
+      );
+      return;
+    }
     setPending(true);
     setMessage("");
     try {
@@ -2333,12 +2354,15 @@ function AdminCatalogPage({ user }: { user: AuthUser | null }) {
               قیمت پیش از تخفیف
               <input
                 type="number"
-                min="0"
+                min={product.price ? String(Number(product.price) + 1) : "0"}
                 value={product.compare_at_price}
                 onChange={(event) =>
                   updateProduct("compare_at_price", event.target.value)
                 }
               />
+              <small className="field-hint">
+                فقط برای تخفیف وارد شود و باید از قیمت فروش بیشتر باشد.
+              </small>
             </label>
             <label>
               موجودی

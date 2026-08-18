@@ -1722,6 +1722,12 @@ footer small {
   font-size: 0.68rem;
   font-weight: 700;
 }
+.admin-product-form .field-hint {
+  color: #778278;
+  font-size: 0.59rem;
+  font-weight: 400;
+  line-height: 1.7;
+}
 .admin-product-form input,
 .admin-product-form select,
 .admin-product-form textarea,
