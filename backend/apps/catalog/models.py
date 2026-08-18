@@ -156,6 +156,10 @@ class ProductImage(TimeStampedModel):
 
 
 class ProductReview(TimeStampedModel):
+    class ModerationStatus(models.TextChoices):
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Rejected"
+
     product = models.ForeignKey(
         Product, on_delete=models.CASCADE, related_name="reviews"
     )
@@ -172,26 +176,17 @@ class ProductReview(TimeStampedModel):
         related_name="replies",
     )
     body = models.TextField(max_length=1500)
-    rating = models.PositiveSmallIntegerField(null=True, blank=True)
+    moderation_status = models.CharField(
+        max_length=16,
+        choices=ModerationStatus.choices,
+        default=ModerationStatus.APPROVED,
+    )
 
     class Meta:
         ordering = ("-created_at", "-id")
-        constraints = [
-            models.CheckConstraint(
-                condition=Q(rating__isnull=True) | Q(rating__gte=1, rating__lte=5),
-                name="catalog_review_rating_between_one_and_five",
-            ),
-            models.UniqueConstraint(
-                fields=("product", "user"),
-                condition=Q(parent__isnull=True),
-                name="catalog_one_root_review_per_customer",
-            ),
-        ]
 
     def clean(self) -> None:
         super().clean()
-        if self.rating is not None and not 1 <= self.rating <= 5:
-            raise ValidationError({"rating": "Rating must be between 1 and 5."})
         if self.parent_id:
             if self.parent.product_id != self.product_id:
                 raise ValidationError(
@@ -201,10 +196,38 @@ class ProductReview(TimeStampedModel):
                 raise ValidationError(
                     {"parent": "Replies can only target a root review."}
                 )
-            if self.rating is not None:
-                raise ValidationError({"rating": "Replies cannot have a rating."})
-        elif self.rating is None:
-            raise ValidationError({"rating": "A product review must include a rating."})
 
     def __str__(self) -> str:
         return f"Review for {self.product} by {self.user}"
+
+
+class ProductRating(TimeStampedModel):
+    product = models.ForeignKey(
+        Product, on_delete=models.CASCADE, related_name="ratings"
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="product_ratings",
+    )
+    score = models.PositiveSmallIntegerField()
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(score__gte=1, score__lte=5),
+                name="catalog_rating_between_one_and_five",
+            ),
+            models.UniqueConstraint(
+                fields=("product", "user"),
+                name="catalog_one_rating_per_customer",
+            ),
+        ]
+
+    def clean(self) -> None:
+        super().clean()
+        if not 1 <= self.score <= 5:
+            raise ValidationError({"score": "Rating must be between 1 and 5."})
+
+    def __str__(self) -> str:
+        return f"{self.score}/5 for {self.product} by {self.user}"

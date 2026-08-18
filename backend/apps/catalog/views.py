@@ -1,21 +1,32 @@
 from decimal import Decimal, InvalidOperation
 
-from django.db import IntegrityError
 from django.db.models import Prefetch, Q
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
-from rest_framework.generics import ListAPIView, ListCreateAPIView, RetrieveAPIView
+from rest_framework.generics import (
+    CreateAPIView,
+    ListAPIView,
+    ListCreateAPIView,
+    RetrieveAPIView,
+)
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from .models import Category, MobileSpecification, Product, ProductReview
+from .permissions import IsPlatformAdmin
 from .serializers import (
+    AdminProductReviewSerializer,
+    AdminProductSerializer,
     CategorySerializer,
     ProductDetailSerializer,
     ProductListSerializer,
+    ProductRatingSerializer,
     ProductReviewCreateSerializer,
+    ProductReviewModerationSerializer,
     ProductReviewSerializer,
+    product_rating_summary,
 )
 
 
@@ -162,7 +173,9 @@ class ProductReviewListCreateAPIView(ListCreateAPIView):
     def get_queryset(self):
         return (
             ProductReview.objects.filter(
-                product=self.get_product(), parent__isnull=True
+                product=self.get_product(),
+                parent__isnull=True,
+                moderation_status=ProductReview.ModerationStatus.APPROVED,
             )
             .select_related("user")
             .prefetch_related(
@@ -188,13 +201,87 @@ class ProductReviewListCreateAPIView(ListCreateAPIView):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        try:
-            review = serializer.save()
-        except IntegrityError as error:
-            raise ValidationError(
-                {"detail": "You have already reviewed this product."}
-            ) from error
+        review = serializer.save()
         response_serializer = ProductReviewSerializer(
             review, context=self.get_serializer_context()
         )
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+
+class ProductRatingAPIView(APIView):
+    permission_classes = (AllowAny,)
+
+    def get_permissions(self):
+        if self.request.method in {"PUT", "PATCH"}:
+            return (IsAuthenticated(),)
+        return super().get_permissions()
+
+    def get_product(self) -> Product:
+        if not hasattr(self, "_product"):
+            self._product = get_object_or_404(
+                Product.objects.filter(
+                    status=Product.Status.PUBLISHED,
+                    category__is_active=True,
+                ),
+                slug=self.kwargs["slug"],
+            )
+        return self._product
+
+    def get(self, request, *args, **kwargs):
+        product = self.get_product()
+        response_data = product_rating_summary(product)
+        response_data["my_score"] = None
+        if request.user.is_authenticated:
+            response_data["my_score"] = (
+                product.ratings.filter(user=request.user)
+                .values_list("score", flat=True)
+                .first()
+            )
+        return Response(response_data)
+
+    def put(self, request, *args, **kwargs):
+        serializer = ProductRatingSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        product = self.get_product()
+        rating, _ = product.ratings.update_or_create(
+            user=request.user,
+            defaults={"score": serializer.validated_data["score"]},
+        )
+        response_data = product_rating_summary(product)
+        response_data["my_score"] = rating.score
+        return Response(response_data)
+
+    patch = put
+
+
+class AdminProductCreateAPIView(CreateAPIView):
+    permission_classes = (IsPlatformAdmin,)
+    serializer_class = AdminProductSerializer
+
+
+class AdminProductReviewListAPIView(ListAPIView):
+    permission_classes = (IsPlatformAdmin,)
+    serializer_class = AdminProductReviewSerializer
+
+    def get_queryset(self):
+        queryset = ProductReview.objects.select_related("product", "user", "parent")
+        moderation_status = self.request.query_params.get("status", "").strip()
+        if moderation_status:
+            valid_statuses = {
+                choice for choice, _ in ProductReview.ModerationStatus.choices
+            }
+            if moderation_status not in valid_statuses:
+                raise ValidationError({"status": "Invalid review status."})
+            queryset = queryset.filter(moderation_status=moderation_status)
+        return queryset
+
+
+class AdminProductReviewModerationAPIView(APIView):
+    permission_classes = (IsPlatformAdmin,)
+
+    def patch(self, request, review_id):
+        review = get_object_or_404(ProductReview, pk=review_id)
+        serializer = ProductReviewModerationSerializer(review, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(AdminProductReviewSerializer(review).data)

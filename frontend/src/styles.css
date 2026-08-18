@@ -1573,6 +1573,70 @@ footer small {
   color: #778278;
   font-size: 0.68rem;
 }
+.profile-name-form {
+  display: grid;
+  gap: 7px;
+  width: 100%;
+  margin: 8px 0 2px;
+}
+.profile-name-form label {
+  display: grid;
+  gap: 5px;
+  color: #687569;
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+.profile-name-form input {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid #d7e1d4;
+  border-radius: 9px;
+  color: #334138;
+  background: #fff;
+  font: inherit;
+}
+.profile-name-form textarea {
+  min-width: 0;
+  min-height: 72px;
+  padding: 9px 10px;
+  resize: vertical;
+  border: 1px solid #d7e1d4;
+  border-radius: 9px;
+  color: #334138;
+  background: #fff;
+  font: inherit;
+}
+.profile-name-form input:focus {
+  outline: 0;
+  border-color: #527b60;
+  box-shadow: 0 0 0 3px #4c7b5518;
+}
+.profile-name-form textarea:focus {
+  outline: 0;
+  border-color: #527b60;
+  box-shadow: 0 0 0 3px #4c7b5518;
+}
+.profile-name-form button {
+  justify-self: start;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: 8px;
+  color: #fff;
+  background: #35694c;
+  cursor: pointer;
+  font:
+    700 0.65rem Vazirmatn,
+    Tahoma,
+    sans-serif;
+}
+.profile-name-form button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+.profile-name-form small {
+  color: #638069;
+  font-size: 0.59rem;
+}
 .profile-navigation {
   width: 100%;
   margin: 15px 0 3px;
@@ -1639,6 +1703,95 @@ footer small {
   border: 1px solid #e8ebe3;
   border-radius: 17px;
   background: #fffefa;
+}
+.admin-catalog-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+}
+.admin-product-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.admin-product-form label {
+  display: grid;
+  gap: 5px;
+  color: #687569;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+.admin-product-form input,
+.admin-product-form select,
+.admin-product-form textarea,
+.orders-heading select {
+  min-width: 0;
+  min-height: 39px;
+  padding: 8px 10px;
+  border: 1px solid #d7e1d4;
+  border-radius: 9px;
+  color: #334138;
+  background: #fff;
+  font: inherit;
+}
+.admin-product-form textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+.admin-product-form .wide {
+  grid-column: 1 / -1;
+}
+.admin-product-form button {
+  justify-self: start;
+}
+.admin-reviews-list {
+  display: grid;
+  gap: 12px;
+}
+.admin-reviews-list .order-card > p {
+  margin: 14px 0;
+  color: #4e5b50;
+  font-size: 0.73rem;
+  line-height: 1.9;
+}
+.review-status {
+  padding: 5px 8px;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  white-space: nowrap;
+}
+.review-status.approved {
+  color: #3e704c;
+  background: #edf5eb;
+}
+.review-status.rejected {
+  color: #a04d45;
+  background: #fff0ee;
+}
+.admin-review-actions {
+  display: flex;
+  gap: 8px;
+}
+.admin-review-actions button {
+  min-height: 33px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 8px;
+  color: #fff;
+  background: #315f47;
+  cursor: pointer;
+  font:
+    700 0.67rem Vazirmatn,
+    Tahoma,
+    sans-serif;
+}
+.admin-review-actions button:last-child {
+  background: #a04d45;
+}
+.admin-review-actions button:disabled {
+  cursor: default;
+  opacity: 0.45;
 }
 .orders-heading {
   margin-bottom: 18px;
@@ -2551,7 +2704,8 @@ footer small {
   font-size: 0.58rem;
 }
 .review-auth-prompt,
-.review-form {
+.review-form,
+.user-rating-control {
   margin: 20px 0;
   padding: 18px;
   border: 1px solid #e4eadf;
@@ -2568,6 +2722,18 @@ footer small {
   margin: 0;
   color: #647066;
   font-size: 0.72rem;
+}
+.user-rating-control {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.user-rating-control .button {
+  min-height: 38px;
+  padding: 0 15px;
+  border-radius: 9px;
+  font-size: 0.68rem;
 }
 .review-auth-prompt .button,
 .review-form .button,
@@ -2682,15 +2848,6 @@ footer small {
   color: #929b92;
   font-size: 0.59rem;
 }
-.review-rating {
-  padding: 4px 8px;
-  border-radius: 999px;
-  color: #84651a;
-  background: #fff4d7;
-  font-size: 0.65rem;
-  font-weight: 800;
-  white-space: nowrap;
-}
 .review-card > p,
 .review-replies p {
   margin: 13px 0 0;
@@ -2780,6 +2937,10 @@ footer small {
   }
   .review-form {
     grid-template-columns: 1fr;
+  }
+  .user-rating-control {
+    align-items: flex-start;
+    flex-direction: column;
   }
   .review-form > .button {
     grid-column: 1;
@@ -2978,6 +3139,15 @@ footer small {
     position: static;
     grid-template-columns: auto 1fr;
     column-gap: 14px;
+  }
+  .admin-catalog-grid {
+    grid-template-columns: 1fr;
+  }
+  .admin-product-form {
+    grid-template-columns: 1fr;
+  }
+  .admin-product-form .wide {
+    grid-column: auto;
   }
   .profile-sidebar > strong {
     margin: 0;

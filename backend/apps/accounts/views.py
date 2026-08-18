@@ -12,6 +12,7 @@ from .serializers import (
     AdminTokenObtainPairSerializer,
     OTPRequestSerializer,
     OTPVerifySerializer,
+    UserProfileSerializer,
     UserSerializer,
 )
 from .services import OTPInvalid, OTPRateLimited, request_otp, verify_otp
@@ -83,4 +84,12 @@ class CurrentUserView(APIView):
     permission_classes = (IsAuthenticated,)
 
     def get(self, request):
+        return Response(UserSerializer(request.user).data)
+
+    def patch(self, request):
+        serializer = UserProfileSerializer(
+            request.user, data=request.data, partial=True
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
         return Response(UserSerializer(request.user).data)

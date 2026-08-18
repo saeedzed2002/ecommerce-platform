@@ -9,11 +9,34 @@ from .models import OTPChallenge, User
 class CustomUserAdmin(UserAdmin):
     model = User
     ordering = ("-joined_at",)
-    list_display = ("phone", "role", "is_staff", "is_active", "joined_at")
+    list_display = (
+        "phone",
+        "display_name",
+        "email",
+        "role",
+        "is_staff",
+        "is_active",
+        "joined_at",
+    )
     list_filter = ("role", "is_staff", "is_active")
     search_fields = ("phone",)
     fieldsets = (
-        (None, {"fields": ("phone", "password")}),
+        (
+            None,
+            {
+                "fields": (
+                    "phone",
+                    "display_name",
+                    "email",
+                    "birth_date",
+                    "province",
+                    "city",
+                    "home_address",
+                    "postal_code",
+                    "password",
+                )
+            },
+        ),
         (_("Role"), {"fields": ("role",)}),
         (
             _("Permissions"),
@@ -37,6 +60,13 @@ class CustomUserAdmin(UserAdmin):
                 "classes": ("wide",),
                 "fields": (
                     "phone",
+                    "display_name",
+                    "email",
+                    "birth_date",
+                    "province",
+                    "city",
+                    "home_address",
+                    "postal_code",
                     "role",
                     "password1",
                     "password2",
