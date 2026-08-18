@@ -86,6 +86,35 @@ def test_current_user_can_set_a_display_name(client: APIClient) -> None:
 
 
 @pytest.mark.django_db
+def test_current_user_can_update_profile_but_phone_is_read_only(
+    client: APIClient,
+) -> None:
+    user = User.objects.create_user(phone="989121234567")
+    client.force_authenticate(user=user)
+
+    response = client.patch(
+        "/api/v1/auth/me/",
+        {
+            "display_name": "سعید",
+            "email": "SaEed@example.com ",
+            "birth_date": "1995-04-12",
+            "province": "Tehran",
+            "city": "Tehran",
+            "home_address": "Example street",
+            "postal_code": "1234567890",
+            "phone": "989199999999",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.data["phone"] == "989121234567"
+    assert response.data["email"] == "saeed@example.com"
+    assert response.data["postal_code"] == "1234567890"
+    user.refresh_from_db()
+    assert str(user.birth_date) == "1995-04-12"
+
+
+@pytest.mark.django_db
 def test_otp_verify_invalidates_challenge_after_maximum_attempts(
     client: APIClient,
 ) -> None:

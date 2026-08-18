@@ -59,8 +59,8 @@ class ProductAdmin(admin.ModelAdmin):
 
 @admin.register(ProductReview)
 class ProductReviewAdmin(admin.ModelAdmin):
-    list_display = ("product", "user", "parent", "created_at")
-    list_filter = ("created_at",)
+    list_display = ("product", "user", "parent", "moderation_status", "created_at")
+    list_filter = ("moderation_status", "created_at")
     search_fields = ("product__name", "user__phone", "body")
     autocomplete_fields = ("product", "user", "parent")
     readonly_fields = ("created_at", "updated_at")

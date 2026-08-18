@@ -277,3 +277,64 @@ def test_product_review_reply_is_limited_to_the_same_root_review() -> None:
             ],
         }
     ]
+
+
+@pytest.mark.django_db
+def test_admin_can_create_products_and_moderate_reviews() -> None:
+    category = Category.objects.create(name="Laptops", slug="laptops")
+    customer = User.objects.create_user(phone="989121234567")
+    admin = User.objects.create_user(
+        phone="989198765432", role=User.Role.ADMIN, is_staff=True
+    )
+    product = create_product(category, slug="reviewed-product")
+    review = ProductReview.objects.create(
+        product=product, user=customer, body="This should be moderated."
+    )
+    client = APIClient()
+
+    client.force_authenticate(customer)
+    assert (
+        client.post(
+            "/api/v1/catalog/admin/products/",
+            {
+                "category": category.id,
+                "product_type": "laptop",
+                "name": "Unauthorized product",
+                "slug": "unauthorized-product",
+                "sku": "UNAUTHORIZED",
+                "price": "1000000",
+            },
+        ).status_code
+        == 403
+    )
+
+    client.force_authenticate(admin)
+    product_response = client.post(
+        "/api/v1/catalog/admin/products/",
+        {
+            "category": category.id,
+            "product_type": "laptop",
+            "name": "Admin product",
+            "slug": "admin-product",
+            "sku": "ADMIN-001",
+            "price": "1000000",
+            "stock_quantity": 2,
+            "status": "published",
+        },
+    )
+    reviews_response = client.get("/api/v1/catalog/admin/reviews/")
+    moderation_response = client.patch(
+        f"/api/v1/catalog/admin/reviews/{review.id}/",
+        {"moderation_status": "rejected"},
+    )
+    public_reviews = APIClient().get(
+        f"/api/v1/catalog/products/{product.slug}/reviews/"
+    )
+
+    assert product_response.status_code == 201
+    assert product_response.data["slug"] == "admin-product"
+    assert reviews_response.status_code == 200
+    assert reviews_response.data["results"][0]["moderation_status"] == "approved"
+    assert moderation_response.status_code == 200
+    assert moderation_response.data["moderation_status"] == "rejected"
+    assert public_reviews.data["results"] == []

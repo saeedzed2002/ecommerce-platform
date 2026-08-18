@@ -156,6 +156,10 @@ class ProductImage(TimeStampedModel):
 
 
 class ProductReview(TimeStampedModel):
+    class ModerationStatus(models.TextChoices):
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Rejected"
+
     product = models.ForeignKey(
         Product, on_delete=models.CASCADE, related_name="reviews"
     )
@@ -172,6 +176,11 @@ class ProductReview(TimeStampedModel):
         related_name="replies",
     )
     body = models.TextField(max_length=1500)
+    moderation_status = models.CharField(
+        max_length=16,
+        choices=ModerationStatus.choices,
+        default=ModerationStatus.APPROVED,
+    )
 
     class Meta:
         ordering = ("-created_at", "-id")

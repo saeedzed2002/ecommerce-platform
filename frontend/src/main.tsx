@@ -106,7 +106,25 @@ type AuthUser = {
   id: number;
   phone: string;
   display_name: string;
+  email: string;
+  birth_date: string | null;
+  province: string;
+  city: string;
+  home_address: string;
+  postal_code: string;
   role: "customer" | "admin";
+  joined_at: string;
+};
+type AdminReview = {
+  id: number;
+  product_name: string;
+  product_slug: string;
+  customer_phone: string;
+  customer_name: string;
+  body: string;
+  parent: number | null;
+  moderation_status: "approved" | "rejected";
+  created_at: string;
 };
 type AuthResponse = { access: string; refresh: string; user: AuthUser };
 type OrderItem = {
@@ -197,6 +215,7 @@ type Route =
   | { name: "profile" }
   | { name: "admin-dashboard" }
   | { name: "admin-orders" }
+  | { name: "admin-catalog" }
   | { name: "chat" }
   | { name: "admin-chat" }
   | { name: "not-found" };
@@ -232,6 +251,8 @@ function getRoute(): Route {
     return { name: "admin-dashboard" };
   if (parts[0] === "admin" && parts[1] === "orders" && parts.length === 2)
     return { name: "admin-orders" };
+  if (parts[0] === "admin" && parts[1] === "catalog" && parts.length === 2)
+    return { name: "admin-catalog" };
   if (parts[0] === "chat" && parts.length === 1) return { name: "chat" };
   if (parts[0] === "admin" && parts[1] === "chat" && parts.length === 2)
     return { name: "admin-chat" };
@@ -1545,12 +1566,28 @@ function ProfilePage({
   const [ordersResponse, setOrdersResponse] = useState<OrdersResponse | null>(
     null,
   );
-  const [displayName, setDisplayName] = useState(user?.display_name ?? "");
-  const [nameMessage, setNameMessage] = useState("");
-  const [namePending, setNamePending] = useState(false);
+  const [profile, setProfile] = useState({
+    display_name: user?.display_name ?? "",
+    email: user?.email ?? "",
+    birth_date: user?.birth_date ?? "",
+    province: user?.province ?? "",
+    city: user?.city ?? "",
+    home_address: user?.home_address ?? "",
+    postal_code: user?.postal_code ?? "",
+  });
+  const [profileMessage, setProfileMessage] = useState("");
+  const [profilePending, setProfilePending] = useState(false);
   useEffect(() => {
-    setDisplayName(user?.display_name ?? "");
-  }, [user?.display_name]);
+    setProfile({
+      display_name: user?.display_name ?? "",
+      email: user?.email ?? "",
+      birth_date: user?.birth_date ?? "",
+      province: user?.province ?? "",
+      city: user?.city ?? "",
+      home_address: user?.home_address ?? "",
+      postal_code: user?.postal_code ?? "",
+    });
+  }, [user]);
   useEffect(() => {
     if (!user) {
       setLoading(false);
@@ -1597,26 +1634,26 @@ function ProfilePage({
       />
     );
 
-  async function updateDisplayName(event: FormEvent<HTMLFormElement>) {
+  async function updateProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setNamePending(true);
-    setNameMessage("");
+    setProfilePending(true);
+    setProfileMessage("");
     try {
       const response = await fetchAuthenticated("/api/v1/auth/me/", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ display_name: displayName }),
+        body: JSON.stringify(profile),
       });
       if (!response.ok) throw new Error(await getError(response));
       const nextUser = (await response.json()) as AuthUser;
       onUserUpdated(nextUser);
-      setNameMessage("نام نمایشی ذخیره شد.");
+      setProfileMessage("مشخصات پروفایل ذخیره شد.");
     } catch (reason) {
-      setNameMessage(
-        reason instanceof Error ? reason.message : "ذخیرهٔ نام ناموفق بود.",
+      setProfileMessage(
+        reason instanceof Error ? reason.message : "ذخیرهٔ پروفایل ناموفق بود.",
       );
     } finally {
-      setNamePending(false);
+      setProfilePending(false);
     }
   }
 
@@ -1636,20 +1673,108 @@ function ProfilePage({
           </div>
           <strong>{user.display_name || "کاربر"}</strong>
           <span dir="ltr">{user.phone}</span>
-          <form className="profile-name-form" onSubmit={updateDisplayName}>
+          <span>{user.role === "admin" ? "مدیر سامانه" : "کاربر"}</span>
+          <form className="profile-name-form" onSubmit={updateProfile}>
             <label>
-              نام نمایشی
+              نام و نام خانوادگی
               <input
-                value={displayName}
+                value={profile.display_name}
                 maxLength={80}
-                onChange={(event) => setDisplayName(event.target.value)}
+                onChange={(event) =>
+                  setProfile((current) => ({
+                    ...current,
+                    display_name: event.target.value,
+                  }))
+                }
                 placeholder="مثلاً سعید زیدآبادی"
               />
             </label>
-            <button type="submit" disabled={namePending}>
-              {namePending ? "در حال ذخیره…" : "ذخیره"}
+            <label>
+              ایمیل
+              <input
+                type="email"
+                value={profile.email}
+                onChange={(event) =>
+                  setProfile((current) => ({
+                    ...current,
+                    email: event.target.value,
+                  }))
+                }
+                placeholder="name@example.com"
+                dir="ltr"
+              />
+            </label>
+            <label>
+              تاریخ تولد
+              <input
+                type="date"
+                value={profile.birth_date}
+                onChange={(event) =>
+                  setProfile((current) => ({
+                    ...current,
+                    birth_date: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label>
+              استان
+              <input
+                value={profile.province}
+                maxLength={80}
+                onChange={(event) =>
+                  setProfile((current) => ({
+                    ...current,
+                    province: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label>
+              شهر
+              <input
+                value={profile.city}
+                maxLength={80}
+                onChange={(event) =>
+                  setProfile((current) => ({
+                    ...current,
+                    city: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label>
+              کد پستی
+              <input
+                value={profile.postal_code}
+                maxLength={10}
+                inputMode="numeric"
+                onChange={(event) =>
+                  setProfile((current) => ({
+                    ...current,
+                    postal_code: event.target.value,
+                  }))
+                }
+                dir="ltr"
+              />
+            </label>
+            <label>
+              نشانی منزل
+              <textarea
+                value={profile.home_address}
+                maxLength={1000}
+                onChange={(event) =>
+                  setProfile((current) => ({
+                    ...current,
+                    home_address: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <button type="submit" disabled={profilePending}>
+              {profilePending ? "در حال ذخیره…" : "ذخیرهٔ مشخصات"}
             </button>
-            {nameMessage && <small>{nameMessage}</small>}
+            {profileMessage && <small>{profileMessage}</small>}
           </form>
           <nav className="profile-navigation" aria-label="بخش‌های پروفایل">
             <button
@@ -1690,6 +1815,9 @@ function ProfilePage({
               </AppLink>
               <AppLink className="admin-dashboard-link" href="/admin/orders">
                 مدیریت سفارش‌ها
+              </AppLink>
+              <AppLink className="admin-dashboard-link" href="/admin/catalog">
+                کالاها و نظرها
               </AppLink>
               <AppLink className="admin-dashboard-link" href="/admin/chat">
                 گفت‌وگوهای پشتیبانی
@@ -1926,6 +2054,9 @@ function AdminDashboardPage({ user }: { user: AuthUser | null }) {
             <AppLink className="admin-dashboard-link" href="/admin/orders">
               مدیریت سفارش‌ها
             </AppLink>
+            <AppLink className="admin-dashboard-link" href="/admin/catalog">
+              کالاها و نظرها
+            </AppLink>
           </section>
           <section className="admin-overview-card">
             <div className="admin-overview-heading">
@@ -1959,6 +2090,350 @@ function AdminDashboardPage({ user }: { user: AuthUser | null }) {
           </section>
         </div>
       )}
+    </main>
+  );
+}
+
+function AdminCatalogPage({ user }: { user: AuthUser | null }) {
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [reviews, setReviews] = useState<AdminReview[]>([]);
+  const [reviewStatus, setReviewStatus] = useState("");
+  const [message, setMessage] = useState("");
+  const [pending, setPending] = useState(false);
+  const [product, setProduct] = useState({
+    category: "",
+    product_type: "laptop",
+    name: "",
+    slug: "",
+    sku: "",
+    brand: "",
+    short_description: "",
+    description: "",
+    price: "",
+    compare_at_price: "",
+    stock_quantity: "0",
+    status: "draft",
+  });
+
+  useEffect(() => {
+    if (user?.role !== "admin") return;
+    fetch(`${apiBaseUrl}/api/v1/catalog/categories/`)
+      .then((response) => (response.ok ? response.json() : Promise.reject()))
+      .then((data: Category[]) => {
+        setCategories(data);
+        setProduct((current) => ({
+          ...current,
+          category: current.category || String(data[0]?.id ?? ""),
+        }));
+      })
+      .catch(() => setMessage("دریافت دسته‌بندی‌ها ناموفق بود."));
+  }, [user?.id, user?.role]);
+
+  useEffect(() => {
+    if (user?.role !== "admin") return;
+    const params = reviewStatus ? `?status=${reviewStatus}` : "";
+    fetchAuthenticated(`/api/v1/catalog/admin/reviews/${params}`)
+      .then(async (response) => {
+        if (!response.ok) throw new Error(await getError(response));
+        return response.json() as Promise<{ results: AdminReview[] }>;
+      })
+      .then((data) => setReviews(data.results))
+      .catch((reason) =>
+        setMessage(
+          reason instanceof Error ? reason.message : "دریافت نظرها ناموفق بود.",
+        ),
+      );
+  }, [user?.id, user?.role, reviewStatus]);
+
+  if (user?.role !== "admin")
+    return (
+      <PageState title="دسترسی ندارید" text="این بخش فقط برای مدیران است." />
+    );
+
+  function updateProduct(field: keyof typeof product, value: string) {
+    setProduct((current) => ({ ...current, [field]: value }));
+  }
+
+  async function createProduct(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending(true);
+    setMessage("");
+    try {
+      const response = await fetchAuthenticated(
+        "/api/v1/catalog/admin/products/",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...product,
+            category: Number(product.category),
+            stock_quantity: Number(product.stock_quantity),
+            compare_at_price: product.compare_at_price || null,
+          }),
+        },
+      );
+      if (!response.ok) throw new Error(await getError(response));
+      setMessage("کالا با موفقیت ایجاد شد.");
+      setProduct((current) => ({
+        ...current,
+        name: "",
+        slug: "",
+        sku: "",
+        brand: "",
+        short_description: "",
+        description: "",
+        price: "",
+        compare_at_price: "",
+        stock_quantity: "0",
+      }));
+    } catch (reason) {
+      setMessage(
+        reason instanceof Error ? reason.message : "ایجاد کالا ناموفق بود.",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function moderateReview(
+    review: AdminReview,
+    moderation_status: "approved" | "rejected",
+  ) {
+    setPending(true);
+    setMessage("");
+    try {
+      const response = await fetchAuthenticated(
+        `/api/v1/catalog/admin/reviews/${review.id}/`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ moderation_status }),
+        },
+      );
+      if (!response.ok) throw new Error(await getError(response));
+      const updated = (await response.json()) as AdminReview;
+      setReviews((items) =>
+        items.map((item) => (item.id === updated.id ? updated : item)),
+      );
+    } catch (reason) {
+      setMessage(
+        reason instanceof Error
+          ? reason.message
+          : "به‌روزرسانی نظر ناموفق بود.",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <main className="profile-page admin-catalog-page">
+      <div className="page-heading">
+        <p className="eyebrow">مدیریت کاتالوگ</p>
+        <h1>ایجاد کالا و رسیدگی به نظرها</h1>
+        <p>
+          نظرهای جدید به‌صورت عادی نمایش داده می‌شوند؛ رد کردن آن‌ها را از نمایش
+          عمومی خارج می‌کند.
+        </p>
+      </div>
+      {message && <p className="orders-state error">{message}</p>}
+      <div className="admin-catalog-grid">
+        <section className="orders-section">
+          <div className="orders-heading">
+            <h2>کالای جدید</h2>
+          </div>
+          <form className="admin-product-form" onSubmit={createProduct}>
+            <label>
+              نام کالا
+              <input
+                required
+                value={product.name}
+                onChange={(event) => updateProduct("name", event.target.value)}
+              />
+            </label>
+            <label>
+              شناسهٔ URL
+              <input
+                required
+                value={product.slug}
+                onChange={(event) => updateProduct("slug", event.target.value)}
+                dir="ltr"
+              />
+            </label>
+            <label>
+              کد کالا
+              <input
+                required
+                value={product.sku}
+                onChange={(event) => updateProduct("sku", event.target.value)}
+                dir="ltr"
+              />
+            </label>
+            <label>
+              دسته‌بندی
+              <select
+                required
+                value={product.category}
+                onChange={(event) =>
+                  updateProduct("category", event.target.value)
+                }
+              >
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              نوع کالا
+              <select
+                value={product.product_type}
+                onChange={(event) =>
+                  updateProduct("product_type", event.target.value)
+                }
+              >
+                <option value="laptop">لپ‌تاپ</option>
+                <option value="mobile">موبایل</option>
+              </select>
+            </label>
+            <label>
+              برند
+              <input
+                value={product.brand}
+                onChange={(event) => updateProduct("brand", event.target.value)}
+              />
+            </label>
+            <label>
+              قیمت
+              <input
+                required
+                type="number"
+                min="0"
+                value={product.price}
+                onChange={(event) => updateProduct("price", event.target.value)}
+              />
+            </label>
+            <label>
+              قیمت پیش از تخفیف
+              <input
+                type="number"
+                min="0"
+                value={product.compare_at_price}
+                onChange={(event) =>
+                  updateProduct("compare_at_price", event.target.value)
+                }
+              />
+            </label>
+            <label>
+              موجودی
+              <input
+                required
+                type="number"
+                min="0"
+                value={product.stock_quantity}
+                onChange={(event) =>
+                  updateProduct("stock_quantity", event.target.value)
+                }
+              />
+            </label>
+            <label>
+              وضعیت
+              <select
+                value={product.status}
+                onChange={(event) =>
+                  updateProduct("status", event.target.value)
+                }
+              >
+                <option value="draft">پیش‌نویس</option>
+                <option value="published">منتشرشده</option>
+              </select>
+            </label>
+            <label className="wide">
+              توضیح کوتاه
+              <input
+                value={product.short_description}
+                maxLength={280}
+                onChange={(event) =>
+                  updateProduct("short_description", event.target.value)
+                }
+              />
+            </label>
+            <label className="wide">
+              توضیحات
+              <textarea
+                value={product.description}
+                onChange={(event) =>
+                  updateProduct("description", event.target.value)
+                }
+              />
+            </label>
+            <button
+              className="button button-primary"
+              type="submit"
+              disabled={pending || !categories.length}
+            >
+              ایجاد کالا
+            </button>
+          </form>
+        </section>
+        <section className="orders-section">
+          <div className="orders-heading">
+            <h2>نظرهای محصول</h2>
+            <select
+              value={reviewStatus}
+              onChange={(event) => setReviewStatus(event.target.value)}
+            >
+              <option value="">همه</option>
+              <option value="approved">نمایش‌داده‌شده</option>
+              <option value="rejected">ردشده</option>
+            </select>
+          </div>
+          <div className="admin-reviews-list">
+            {reviews.map((review) => (
+              <article className="order-card" key={review.id}>
+                <div className="order-card-header">
+                  <div>
+                    <strong>{review.product_name}</strong>
+                    <span>
+                      {review.customer_name} — {review.customer_phone}
+                    </span>
+                  </div>
+                  <span className={`review-status ${review.moderation_status}`}>
+                    {review.moderation_status === "approved"
+                      ? "نمایش داده می‌شود"
+                      : "رد شده"}
+                  </span>
+                </div>
+                <p>{review.body}</p>
+                <div className="admin-review-actions">
+                  <button
+                    type="button"
+                    disabled={
+                      pending || review.moderation_status === "approved"
+                    }
+                    onClick={() => void moderateReview(review, "approved")}
+                  >
+                    تأیید
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      pending || review.moderation_status === "rejected"
+                    }
+                    onClick={() => void moderateReview(review, "rejected")}
+                  >
+                    رد
+                  </button>
+                </div>
+              </article>
+            ))}
+            {!reviews.length && (
+              <p className="orders-state">نظری برای این فیلتر وجود ندارد.</p>
+            )}
+          </div>
+        </section>
+      </div>
     </main>
   );
 }
@@ -3363,6 +3838,8 @@ function App() {
       <AdminDashboardPage user={user} />
     ) : route.name === "admin-orders" ? (
       <AdminOrdersPage user={user} />
+    ) : route.name === "admin-catalog" ? (
+      <AdminCatalogPage user={user} />
     ) : route.name === "chat" ? (
       <ChatPage user={user} />
     ) : route.name === "admin-chat" ? (

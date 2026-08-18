@@ -12,6 +12,7 @@ class CustomUserAdmin(UserAdmin):
     list_display = (
         "phone",
         "display_name",
+        "email",
         "role",
         "is_staff",
         "is_active",
@@ -20,7 +21,22 @@ class CustomUserAdmin(UserAdmin):
     list_filter = ("role", "is_staff", "is_active")
     search_fields = ("phone",)
     fieldsets = (
-        (None, {"fields": ("phone", "display_name", "password")}),
+        (
+            None,
+            {
+                "fields": (
+                    "phone",
+                    "display_name",
+                    "email",
+                    "birth_date",
+                    "province",
+                    "city",
+                    "home_address",
+                    "postal_code",
+                    "password",
+                )
+            },
+        ),
         (_("Role"), {"fields": ("role",)}),
         (
             _("Permissions"),
@@ -45,6 +61,12 @@ class CustomUserAdmin(UserAdmin):
                 "fields": (
                     "phone",
                     "display_name",
+                    "email",
+                    "birth_date",
+                    "province",
+                    "city",
+                    "home_address",
+                    "postal_code",
                     "role",
                     "password1",
                     "password2",

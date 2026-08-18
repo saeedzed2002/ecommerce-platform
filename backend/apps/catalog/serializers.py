@@ -146,7 +146,75 @@ class ProductReviewSerializer(serializers.ModelSerializer):
         return review.user.display_name or "کاربر"
 
     def get_replies(self, review: ProductReview) -> list[dict]:
-        return ProductReviewReplySerializer(review.replies.all(), many=True).data
+        return ProductReviewReplySerializer(
+            review.replies.filter(
+                moderation_status=ProductReview.ModerationStatus.APPROVED
+            ),
+            many=True,
+        ).data
+
+
+class AdminProductSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Product
+        fields = (
+            "id",
+            "category",
+            "product_type",
+            "brand",
+            "name",
+            "slug",
+            "sku",
+            "short_description",
+            "description",
+            "price",
+            "compare_at_price",
+            "stock_quantity",
+            "status",
+            "is_featured",
+            "created_at",
+        )
+        read_only_fields = ("id", "created_at")
+
+
+class AdminProductReviewSerializer(serializers.ModelSerializer):
+    product_name = serializers.CharField(source="product.name", read_only=True)
+    product_slug = serializers.CharField(source="product.slug", read_only=True)
+    customer_phone = serializers.CharField(source="user.phone", read_only=True)
+    customer_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ProductReview
+        fields = (
+            "id",
+            "product_name",
+            "product_slug",
+            "customer_phone",
+            "customer_name",
+            "body",
+            "parent",
+            "moderation_status",
+            "created_at",
+        )
+        read_only_fields = (
+            "id",
+            "product_name",
+            "product_slug",
+            "customer_phone",
+            "customer_name",
+            "body",
+            "parent",
+            "created_at",
+        )
+
+    def get_customer_name(self, review: ProductReview) -> str:
+        return review.user.display_name or "کاربر"
+
+
+class ProductReviewModerationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductReview
+        fields = ("moderation_status",)
 
 
 class ProductReviewCreateSerializer(serializers.ModelSerializer):
