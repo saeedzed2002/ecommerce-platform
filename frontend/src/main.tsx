@@ -55,7 +55,28 @@ type ProductDetail = Product & {
     network?: "4g" | "5g";
     battery_mah?: number;
   } | null;
+  rating_summary: { average: number; count: number };
   images: { id: number; image_url: string | null; alt_text: string }[];
+};
+type ProductReviewReply = {
+  id: number;
+  body: string;
+  author_label: string;
+  created_at: string;
+};
+type ProductReview = {
+  id: number;
+  body: string;
+  rating: number;
+  author_label: string;
+  created_at: string;
+  replies: ProductReviewReply[];
+};
+type ProductReviewsResponse = {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: ProductReview[];
 };
 type CartItem = {
   id: number;
@@ -2625,12 +2646,280 @@ function AdminChatPage({ user }: { user: AuthUser | null }) {
   );
 }
 
+function ProductReviews({
+  slug,
+  initialSummary,
+  user,
+  onSignIn,
+}: {
+  slug: string;
+  initialSummary: ProductDetail["rating_summary"];
+  user: AuthUser | null;
+  onSignIn: () => void;
+}) {
+  const [reviews, setReviews] = useState<ProductReviewsResponse | null>(null);
+  const [summary, setSummary] = useState(initialSummary);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [body, setBody] = useState("");
+  const [rating, setRating] = useState(5);
+  const [replyTo, setReplyTo] = useState<number | null>(null);
+  const [replyBody, setReplyBody] = useState("");
+  const [pending, setPending] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    setSummary(initialSummary);
+  }, [initialSummary]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    setError("");
+    fetch(
+      `${apiBaseUrl}/api/v1/catalog/products/${encodeURIComponent(slug)}/reviews/`,
+      { signal: controller.signal },
+    )
+      .then((response) => (response.ok ? response.json() : Promise.reject()))
+      .then((data: ProductReviewsResponse) => setReviews(data))
+      .catch((reason) => {
+        if (!(reason instanceof DOMException && reason.name === "AbortError")) {
+          setError("دریافت نظرها ناموفق بود.");
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, [slug, refreshKey]);
+
+  async function submitReview(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!user) {
+      onSignIn();
+      return;
+    }
+    setPending(true);
+    setError("");
+    try {
+      const response = await fetchAuthenticated(
+        `/api/v1/catalog/products/${encodeURIComponent(slug)}/reviews/`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ body, rating }),
+        },
+      );
+      if (!response.ok) throw new Error(await getError(response));
+      const nextCount = summary.count + 1;
+      setSummary({
+        average: Number(
+          ((summary.average * summary.count + rating) / nextCount).toFixed(1),
+        ),
+        count: nextCount,
+      });
+      setBody("");
+      setRating(5);
+      setRefreshKey((value) => value + 1);
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : "ثبت نظر ناموفق بود.",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function submitReply(
+    event: FormEvent<HTMLFormElement>,
+    parent: number,
+  ) {
+    event.preventDefault();
+    if (!user) {
+      onSignIn();
+      return;
+    }
+    setPending(true);
+    setError("");
+    try {
+      const response = await fetchAuthenticated(
+        `/api/v1/catalog/products/${encodeURIComponent(slug)}/reviews/`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ body: replyBody, parent }),
+        },
+      );
+      if (!response.ok) throw new Error(await getError(response));
+      setReplyTo(null);
+      setReplyBody("");
+      setRefreshKey((value) => value + 1);
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : "ثبت پاسخ ناموفق بود.",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <section
+      className="product-reviews"
+      aria-labelledby="product-reviews-title"
+    >
+      <header className="product-reviews-header">
+        <div>
+          <p className="eyebrow">تجربه خریداران</p>
+          <h2 id="product-reviews-title">نظرها و امتیاز کاربران</h2>
+        </div>
+        <div
+          className="rating-summary"
+          aria-label={`میانگین امتیاز ${summary.average} از ۵`}
+        >
+          <strong>{summary.average.toLocaleString("fa-IR")}</strong>
+          <span>★ از ۵</span>
+          <small>{summary.count.toLocaleString("fa-IR")} نظر</small>
+        </div>
+      </header>
+
+      {!user ? (
+        <div className="review-auth-prompt">
+          <p>برای ثبت نظر یا پاسخ، ابتدا وارد حساب کاربری شوید.</p>
+          <button
+            className="button button-primary"
+            type="button"
+            onClick={onSignIn}
+          >
+            ورود و ثبت نظر
+          </button>
+        </div>
+      ) : (
+        <form className="review-form" onSubmit={submitReview}>
+          <label>
+            تجربهٔ شما از این محصول
+            <textarea
+              value={body}
+              onChange={(event) => setBody(event.target.value)}
+              maxLength={1500}
+              placeholder="نکات مثبت، نقاط قابل بهبود و تجربهٔ استفاده را بنویسید…"
+              required
+            />
+          </label>
+          <div className="rating-picker" aria-label="امتیاز شما">
+            <span>امتیاز شما</span>
+            <div>
+              {[1, 2, 3, 4, 5].map((value) => (
+                <button
+                  className={value <= rating ? "selected" : undefined}
+                  type="button"
+                  key={value}
+                  aria-label={`${value} ستاره`}
+                  aria-pressed={value === rating}
+                  onClick={() => setRating(value)}
+                >
+                  ★
+                </button>
+              ))}
+            </div>
+          </div>
+          <button
+            className="button button-primary"
+            type="submit"
+            disabled={pending}
+          >
+            {pending ? "در حال ثبت…" : "ثبت نظر"}
+          </button>
+        </form>
+      )}
+      {error && <p className="review-message error">{error}</p>}
+      {loading ? (
+        <p className="reviews-state">در حال دریافت نظرها…</p>
+      ) : reviews?.results.length ? (
+        <div className="reviews-list">
+          {reviews.results.map((review) => (
+            <article className="review-card" key={review.id}>
+              <header>
+                <div>
+                  <strong>{review.author_label}</strong>
+                  <time>{formatDate(review.created_at)}</time>
+                </div>
+                <span className="review-rating">{review.rating} ★</span>
+              </header>
+              <p>{review.body}</p>
+              <button
+                className="reply-trigger"
+                type="button"
+                onClick={() => {
+                  if (!user) onSignIn();
+                  else setReplyTo(replyTo === review.id ? null : review.id);
+                }}
+              >
+                پاسخ
+              </button>
+              {review.replies.length > 0 && (
+                <div className="review-replies">
+                  {review.replies.map((reply) => (
+                    <article key={reply.id}>
+                      <header>
+                        <strong>{reply.author_label}</strong>
+                        <time>{formatDate(reply.created_at)}</time>
+                      </header>
+                      <p>{reply.body}</p>
+                    </article>
+                  ))}
+                </div>
+              )}
+              {replyTo === review.id && user && (
+                <form
+                  className="reply-form"
+                  onSubmit={(event) => void submitReply(event, review.id)}
+                >
+                  <textarea
+                    value={replyBody}
+                    onChange={(event) => setReplyBody(event.target.value)}
+                    maxLength={1500}
+                    placeholder="پاسخ خود را بنویسید…"
+                    required
+                  />
+                  <div>
+                    <button
+                      className="button button-primary"
+                      type="submit"
+                      disabled={pending}
+                    >
+                      {pending ? "در حال ثبت…" : "ثبت پاسخ"}
+                    </button>
+                    <button
+                      className="button button-secondary"
+                      type="button"
+                      onClick={() => setReplyTo(null)}
+                    >
+                      انصراف
+                    </button>
+                  </div>
+                </form>
+              )}
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="reviews-state">هنوز نظری برای این محصول ثبت نشده است.</p>
+      )}
+    </section>
+  );
+}
+
 function ProductPage({
   slug,
   addToCart,
+  user,
+  onSignIn,
 }: {
   slug: string;
   addToCart: (productId: number) => Promise<void>;
+  user: AuthUser | null;
+  onSignIn: () => void;
 }) {
   const [product, setProduct] = useState<ProductDetail | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -2816,6 +3105,12 @@ function ProductPage({
           {cartMessage && <p className="cart-message">{cartMessage}</p>}
         </div>
       </section>
+      <ProductReviews
+        slug={product.slug}
+        initialSummary={product.rating_summary}
+        user={user}
+        onSignIn={onSignIn}
+      />
     </main>
   );
 }
@@ -2913,6 +3208,8 @@ function App() {
     ) : route.name === "product" ? (
       <ProductPage
         slug={route.slug}
+        user={user}
+        onSignIn={() => setAuthOpen(true)}
         addToCart={(productId) =>
           mutateCart("items/", "POST", { product_id: productId })
         }

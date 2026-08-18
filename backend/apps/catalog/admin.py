@@ -6,6 +6,7 @@ from .models import (
     MobileSpecification,
     Product,
     ProductImage,
+    ProductReview,
 )
 
 
@@ -53,3 +54,12 @@ class ProductAdmin(admin.ModelAdmin):
     search_fields = ("name", "sku", "slug")
     prepopulated_fields = {"slug": ("name",)}
     inlines = (ProductImageInline, LaptopSpecificationInline, MobileSpecificationInline)
+
+
+@admin.register(ProductReview)
+class ProductReviewAdmin(admin.ModelAdmin):
+    list_display = ("product", "user", "parent", "rating", "created_at")
+    list_filter = ("rating", "created_at")
+    search_fields = ("product__name", "user__phone", "body")
+    autocomplete_fields = ("product", "user", "parent")
+    readonly_fields = ("created_at", "updated_at")

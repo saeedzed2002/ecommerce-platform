@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import F, Q
@@ -152,3 +153,58 @@ class ProductImage(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.product.name} image"
+
+
+class ProductReview(TimeStampedModel):
+    product = models.ForeignKey(
+        Product, on_delete=models.CASCADE, related_name="reviews"
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="product_reviews",
+    )
+    parent = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="replies",
+    )
+    body = models.TextField(max_length=1500)
+    rating = models.PositiveSmallIntegerField(null=True, blank=True)
+
+    class Meta:
+        ordering = ("-created_at", "-id")
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(rating__isnull=True) | Q(rating__gte=1, rating__lte=5),
+                name="catalog_review_rating_between_one_and_five",
+            ),
+            models.UniqueConstraint(
+                fields=("product", "user"),
+                condition=Q(parent__isnull=True),
+                name="catalog_one_root_review_per_customer",
+            ),
+        ]
+
+    def clean(self) -> None:
+        super().clean()
+        if self.rating is not None and not 1 <= self.rating <= 5:
+            raise ValidationError({"rating": "Rating must be between 1 and 5."})
+        if self.parent_id:
+            if self.parent.product_id != self.product_id:
+                raise ValidationError(
+                    {"parent": "Reply must belong to the same product."}
+                )
+            if self.parent.parent_id:
+                raise ValidationError(
+                    {"parent": "Replies can only target a root review."}
+                )
+            if self.rating is not None:
+                raise ValidationError({"rating": "Replies cannot have a rating."})
+        elif self.rating is None:
+            raise ValidationError({"rating": "A product review must include a rating."})
+
+    def __str__(self) -> str:
+        return f"Review for {self.product} by {self.user}"
