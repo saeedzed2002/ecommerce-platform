@@ -1573,6 +1573,54 @@ footer small {
   color: #778278;
   font-size: 0.68rem;
 }
+.profile-name-form {
+  display: grid;
+  gap: 7px;
+  width: 100%;
+  margin: 8px 0 2px;
+}
+.profile-name-form label {
+  display: grid;
+  gap: 5px;
+  color: #687569;
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+.profile-name-form input {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid #d7e1d4;
+  border-radius: 9px;
+  color: #334138;
+  background: #fff;
+  font: inherit;
+}
+.profile-name-form input:focus {
+  outline: 0;
+  border-color: #527b60;
+  box-shadow: 0 0 0 3px #4c7b5518;
+}
+.profile-name-form button {
+  justify-self: start;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: 8px;
+  color: #fff;
+  background: #35694c;
+  cursor: pointer;
+  font:
+    700 0.65rem Vazirmatn,
+    Tahoma,
+    sans-serif;
+}
+.profile-name-form button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+.profile-name-form small {
+  color: #638069;
+  font-size: 0.59rem;
+}
 .profile-navigation {
   width: 100%;
   margin: 15px 0 3px;
@@ -2551,7 +2599,8 @@ footer small {
   font-size: 0.58rem;
 }
 .review-auth-prompt,
-.review-form {
+.review-form,
+.user-rating-control {
   margin: 20px 0;
   padding: 18px;
   border: 1px solid #e4eadf;
@@ -2568,6 +2617,18 @@ footer small {
   margin: 0;
   color: #647066;
   font-size: 0.72rem;
+}
+.user-rating-control {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.user-rating-control .button {
+  min-height: 38px;
+  padding: 0 15px;
+  border-radius: 9px;
+  font-size: 0.68rem;
 }
 .review-auth-prompt .button,
 .review-form .button,
@@ -2682,15 +2743,6 @@ footer small {
   color: #929b92;
   font-size: 0.59rem;
 }
-.review-rating {
-  padding: 4px 8px;
-  border-radius: 999px;
-  color: #84651a;
-  background: #fff4d7;
-  font-size: 0.65rem;
-  font-weight: 800;
-  white-space: nowrap;
-}
 .review-card > p,
 .review-replies p {
   margin: 13px 0 0;
@@ -2780,6 +2832,10 @@ footer small {
   }
   .review-form {
     grid-template-columns: 1fr;
+  }
+  .user-rating-control {
+    align-items: flex-start;
+    flex-direction: column;
   }
   .review-form > .button {
     grid-column: 1;

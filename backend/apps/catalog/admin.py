@@ -6,6 +6,7 @@ from .models import (
     MobileSpecification,
     Product,
     ProductImage,
+    ProductRating,
     ProductReview,
 )
 
@@ -58,8 +59,17 @@ class ProductAdmin(admin.ModelAdmin):
 
 @admin.register(ProductReview)
 class ProductReviewAdmin(admin.ModelAdmin):
-    list_display = ("product", "user", "parent", "rating", "created_at")
-    list_filter = ("rating", "created_at")
+    list_display = ("product", "user", "parent", "created_at")
+    list_filter = ("created_at",)
     search_fields = ("product__name", "user__phone", "body")
     autocomplete_fields = ("product", "user", "parent")
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(ProductRating)
+class ProductRatingAdmin(admin.ModelAdmin):
+    list_display = ("product", "user", "score", "updated_at")
+    list_filter = ("score", "updated_at")
+    search_fields = ("product__name", "user__phone")
+    autocomplete_fields = ("product", "user")
     readonly_fields = ("created_at", "updated_at")

@@ -73,6 +73,19 @@ def test_otp_verify_creates_user_returns_tokens_and_authenticates(
 
 
 @pytest.mark.django_db
+def test_current_user_can_set_a_display_name(client: APIClient) -> None:
+    user = User.objects.create_user(phone="989121234567")
+    client.force_authenticate(user=user)
+
+    response = client.patch("/api/v1/auth/me/", {"display_name": "  سعید  "})
+
+    assert response.status_code == 200
+    assert response.data["display_name"] == "سعید"
+    user.refresh_from_db()
+    assert user.display_name == "سعید"
+
+
+@pytest.mark.django_db
 def test_otp_verify_invalidates_challenge_after_maximum_attempts(
     client: APIClient,
 ) -> None:

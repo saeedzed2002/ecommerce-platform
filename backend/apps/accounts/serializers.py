@@ -3,6 +3,7 @@ from rest_framework import serializers
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
+from .models import User
 from .phone import normalize_iranian_mobile
 
 
@@ -25,7 +26,17 @@ class OTPVerifySerializer(OTPRequestSerializer):
 class UserSerializer(serializers.Serializer):
     id = serializers.IntegerField(read_only=True)
     phone = serializers.CharField(read_only=True)
+    display_name = serializers.CharField(read_only=True)
     role = serializers.CharField(read_only=True)
+
+
+class UserProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ("display_name",)
+
+    def validate_display_name(self, value: str) -> str:
+        return value.strip()
 
 
 class AdminTokenObtainPairSerializer(TokenObtainPairSerializer):

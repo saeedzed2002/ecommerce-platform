@@ -7,8 +7,17 @@ from .models import (
     MobileSpecification,
     Product,
     ProductImage,
+    ProductRating,
     ProductReview,
 )
+
+
+def product_rating_summary(product: Product) -> dict[str, float | int]:
+    summary = product.ratings.aggregate(average=Avg("score"), count=Count("id"))
+    return {
+        "average": round(float(summary["average"] or 0), 1),
+        "count": summary["count"],
+    }
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -87,13 +96,7 @@ class ProductDetailSerializer(ProductListSerializer):
         return MobileSpecificationSerializer(specification).data
 
     def get_rating_summary(self, product: Product) -> dict[str, float | int]:
-        summary = product.reviews.filter(parent__isnull=True).aggregate(
-            average=Avg("rating"), count=Count("id")
-        )
-        return {
-            "average": round(float(summary["average"] or 0), 1),
-            "count": summary["count"],
-        }
+        return product_rating_summary(product)
 
 
 class LaptopSpecificationSerializer(serializers.ModelSerializer):
@@ -128,9 +131,7 @@ class ProductReviewReplySerializer(serializers.ModelSerializer):
         fields = ("id", "body", "author_label", "created_at")
 
     def get_author_label(self, review: ProductReview) -> str:
-        if review.user.is_admin:
-            return "پشتیبانی فروشگاه"
-        return f"کاربر {review.user.phone[-4:]}"
+        return review.user.display_name or "کاربر"
 
 
 class ProductReviewSerializer(serializers.ModelSerializer):
@@ -139,12 +140,10 @@ class ProductReviewSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ProductReview
-        fields = ("id", "body", "rating", "author_label", "created_at", "replies")
+        fields = ("id", "body", "author_label", "created_at", "replies")
 
     def get_author_label(self, review: ProductReview) -> str:
-        if review.user.is_admin:
-            return "پشتیبانی فروشگاه"
-        return f"کاربر {review.user.phone[-4:]}"
+        return review.user.display_name or "کاربر"
 
     def get_replies(self, review: ProductReview) -> list[dict]:
         return ProductReviewReplySerializer(review.replies.all(), many=True).data
@@ -159,7 +158,7 @@ class ProductReviewCreateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ProductReview
-        fields = ("body", "rating", "parent")
+        fields = ("body", "parent")
 
     def validate_body(self, value: str) -> str:
         value = value.strip()
@@ -167,16 +166,14 @@ class ProductReviewCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Comment text cannot be empty.")
         return value
 
-    def validate_rating(self, value: int | None) -> int | None:
-        if value is not None and not 1 <= value <= 5:
-            raise serializers.ValidationError("Rating must be between 1 and 5.")
-        return value
-
     def validate(self, attrs: dict) -> dict:
         product: Product = self.context["product"]
-        request = self.context["request"]
         parent = attrs.get("parent")
-        rating = attrs.get("rating")
+
+        if "rating" in self.initial_data:
+            raise serializers.ValidationError(
+                {"rating": "Submit ratings through the product rating endpoint."}
+            )
 
         if parent is not None:
             if parent.product_id != product.id:
@@ -187,21 +184,6 @@ class ProductReviewCreateSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {"parent": "Replies can only target a root review."}
                 )
-            if rating is not None:
-                raise serializers.ValidationError(
-                    {"rating": "Replies cannot have a rating."}
-                )
-        else:
-            if rating is None:
-                raise serializers.ValidationError(
-                    {"rating": "A rating between 1 and 5 is required."}
-                )
-            if ProductReview.objects.filter(
-                product=product, user=request.user, parent__isnull=True
-            ).exists():
-                raise serializers.ValidationError(
-                    {"detail": "You have already reviewed this product."}
-                )
         return attrs
 
     def create(self, validated_data: dict) -> ProductReview:
@@ -210,3 +192,14 @@ class ProductReviewCreateSerializer(serializers.ModelSerializer):
             user=self.context["request"].user,
             **validated_data,
         )
+
+
+class ProductRatingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProductRating
+        fields = ("score",)
+
+    def validate_score(self, value: int) -> int:
+        if not 1 <= value <= 5:
+            raise serializers.ValidationError("Rating must be between 1 and 5.")
+        return value

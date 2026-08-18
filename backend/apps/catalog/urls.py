@@ -4,6 +4,7 @@ from .views import (
     CategoryListAPIView,
     ProductDetailAPIView,
     ProductListAPIView,
+    ProductRatingAPIView,
     ProductReviewListCreateAPIView,
 )
 
@@ -16,6 +17,11 @@ urlpatterns = [
         "products/<slug:slug>/reviews/",
         ProductReviewListCreateAPIView.as_view(),
         name="product-review-list-create",
+    ),
+    path(
+        "products/<slug:slug>/rating/",
+        ProductRatingAPIView.as_view(),
+        name="product-rating",
     ),
     path(
         "products/<slug:slug>/", ProductDetailAPIView.as_view(), name="product-detail"

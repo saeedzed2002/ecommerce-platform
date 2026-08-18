@@ -13,6 +13,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         ADMIN = "admin", "Admin"
 
     phone = models.CharField(max_length=15, unique=True)
+    display_name = models.CharField(max_length=80, blank=True)
     role = models.CharField(max_length=16, choices=Role.choices, default=Role.CUSTOMER)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)

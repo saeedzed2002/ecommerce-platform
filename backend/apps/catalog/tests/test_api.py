@@ -170,39 +170,60 @@ def test_product_api_rejects_invalid_filter_values() -> None:
 
 
 @pytest.mark.django_db
-def test_product_reviews_require_authentication_and_expose_rating_summary() -> None:
+def test_product_reviews_allow_multiple_comments_and_ratings_are_independent() -> None:
     category = Category.objects.create(name="Laptops", slug="laptops")
     product = create_product(category, slug="reviewed-laptop")
     customer = User.objects.create_user(phone="989121234567")
+    other_customer = User.objects.create_user(phone="989198765432")
     client = APIClient()
 
-    anonymous_response = client.post(
+    anonymous_review = client.post(
         f"/api/v1/catalog/products/{product.slug}/reviews/",
-        {"body": "A well-balanced laptop.", "rating": 5},
+        {"body": "A well-balanced laptop."},
+    )
+    anonymous_rating = client.put(
+        f"/api/v1/catalog/products/{product.slug}/rating/", {"score": 5}
     )
 
-    assert anonymous_response.status_code == 401
+    assert anonymous_review.status_code == 401
+    assert anonymous_rating.status_code == 401
 
     client.force_authenticate(customer)
-    create_response = client.post(
+    first_comment = client.post(
         f"/api/v1/catalog/products/{product.slug}/reviews/",
-        {"body": "A well-balanced laptop.", "rating": 5},
+        {"body": "A well-balanced laptop."},
     )
-    duplicate_response = client.post(
+    second_comment = client.post(
         f"/api/v1/catalog/products/{product.slug}/reviews/",
-        {"body": "A second root review.", "rating": 4},
+        {"body": "The screen is bright too."},
     )
-    invalid_rating_response = client.post(
-        f"/api/v1/catalog/products/{product.slug}/reviews/",
-        {"body": "A bad rating.", "rating": 6},
+    first_rating = client.put(
+        f"/api/v1/catalog/products/{product.slug}/rating/", {"score": 5}
+    )
+    updated_rating = client.put(
+        f"/api/v1/catalog/products/{product.slug}/rating/", {"score": 3}
+    )
+    client.force_authenticate(other_customer)
+    other_rating = client.put(
+        f"/api/v1/catalog/products/{product.slug}/rating/", {"score": 4}
     )
     detail_response = APIClient().get(f"/api/v1/catalog/products/{product.slug}/")
 
-    assert create_response.status_code == 201
-    assert create_response.data["author_label"] == "کاربر 4567"
-    assert duplicate_response.status_code == 400
-    assert invalid_rating_response.status_code == 400
-    assert detail_response.data["rating_summary"] == {"average": 5.0, "count": 1}
+    assert first_comment.status_code == 201
+    assert second_comment.status_code == 201
+    assert first_comment.data["author_label"] == "کاربر"
+    assert first_rating.data == {"average": 5.0, "count": 1, "my_score": 5}
+    assert updated_rating.data == {"average": 3.0, "count": 1, "my_score": 3}
+    assert other_rating.data == {"average": 3.5, "count": 2, "my_score": 4}
+    assert detail_response.data["rating_summary"] == {"average": 3.5, "count": 2}
+
+    customer.display_name = "سعید"
+    customer.save(update_fields=("display_name",))
+    comments_response = APIClient().get(
+        f"/api/v1/catalog/products/{product.slug}/reviews/"
+    )
+
+    assert comments_response.data["results"][0]["author_label"] == "سعید"
 
 
 @pytest.mark.django_db
@@ -216,7 +237,6 @@ def test_product_review_reply_is_limited_to_the_same_root_review() -> None:
         product=product,
         user=author,
         body="Battery life is great.",
-        rating=4,
     )
     client = APIClient()
     client.force_authenticate(responder)
@@ -243,14 +263,13 @@ def test_product_review_reply_is_limited_to_the_same_root_review() -> None:
         {
             "id": root_review.id,
             "body": "Battery life is great.",
-            "rating": 4,
-            "author_label": "کاربر 4567",
+            "author_label": "کاربر",
             "created_at": list_response.data["results"][0]["created_at"],
             "replies": [
                 {
                     "id": reply_response.data["id"],
                     "body": "Thanks for the useful review.",
-                    "author_label": "کاربر 5432",
+                    "author_label": "کاربر",
                     "created_at": list_response.data["results"][0]["replies"][0][
                         "created_at"
                     ],

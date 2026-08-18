@@ -67,7 +67,6 @@ type ProductReviewReply = {
 type ProductReview = {
   id: number;
   body: string;
-  rating: number;
   author_label: string;
   created_at: string;
   replies: ProductReviewReply[];
@@ -77,6 +76,9 @@ type ProductReviewsResponse = {
   next: string | null;
   previous: string | null;
   results: ProductReview[];
+};
+type ProductRatingResponse = ProductDetail["rating_summary"] & {
+  my_score: number | null;
 };
 type CartItem = {
   id: number;
@@ -100,7 +102,12 @@ type Address = {
   postal_code: string;
   is_default: boolean;
 };
-type AuthUser = { id: number; phone: string; role: "customer" | "admin" };
+type AuthUser = {
+  id: number;
+  phone: string;
+  display_name: string;
+  role: "customer" | "admin";
+};
 type AuthResponse = { access: string; refresh: string; user: AuthUser };
 type OrderItem = {
   id: number;
@@ -1523,9 +1530,11 @@ function formatDate(value: string) {
 function ProfilePage({
   user,
   onSignOut,
+  onUserUpdated,
 }: {
   user: AuthUser | null;
   onSignOut: () => void;
+  onUserUpdated: (user: AuthUser) => void;
 }) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [summary, setSummary] = useState<OrderSummary | null>(null);
@@ -1536,6 +1545,12 @@ function ProfilePage({
   const [ordersResponse, setOrdersResponse] = useState<OrdersResponse | null>(
     null,
   );
+  const [displayName, setDisplayName] = useState(user?.display_name ?? "");
+  const [nameMessage, setNameMessage] = useState("");
+  const [namePending, setNamePending] = useState(false);
+  useEffect(() => {
+    setDisplayName(user?.display_name ?? "");
+  }, [user?.display_name]);
   useEffect(() => {
     if (!user) {
       setLoading(false);
@@ -1581,6 +1596,30 @@ function ProfilePage({
         text="اطلاعات حساب و سفارش‌ها به حساب کاربری شما متصل هستند."
       />
     );
+
+  async function updateDisplayName(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setNamePending(true);
+    setNameMessage("");
+    try {
+      const response = await fetchAuthenticated("/api/v1/auth/me/", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ display_name: displayName }),
+      });
+      if (!response.ok) throw new Error(await getError(response));
+      const nextUser = (await response.json()) as AuthUser;
+      onUserUpdated(nextUser);
+      setNameMessage("نام نمایشی ذخیره شد.");
+    } catch (reason) {
+      setNameMessage(
+        reason instanceof Error ? reason.message : "ذخیرهٔ نام ناموفق بود.",
+      );
+    } finally {
+      setNamePending(false);
+    }
+  }
+
   return (
     <main className="profile-page">
       <div className="page-heading">
@@ -1595,8 +1634,23 @@ function ProfilePage({
           <div className="profile-avatar">
             <Icon name="user" size={29} />
           </div>
-          <strong>{user.role === "admin" ? "حساب مدیر" : "حساب کاربری"}</strong>
+          <strong>{user.display_name || "کاربر"}</strong>
           <span dir="ltr">{user.phone}</span>
+          <form className="profile-name-form" onSubmit={updateDisplayName}>
+            <label>
+              نام نمایشی
+              <input
+                value={displayName}
+                maxLength={80}
+                onChange={(event) => setDisplayName(event.target.value)}
+                placeholder="مثلاً سعید زیدآبادی"
+              />
+            </label>
+            <button type="submit" disabled={namePending}>
+              {namePending ? "در حال ذخیره…" : "ذخیره"}
+            </button>
+            {nameMessage && <small>{nameMessage}</small>}
+          </form>
           <nav className="profile-navigation" aria-label="بخش‌های پروفایل">
             <button
               className={!statusFilter ? "active" : undefined}
@@ -2662,15 +2716,37 @@ function ProductReviews({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [body, setBody] = useState("");
-  const [rating, setRating] = useState(5);
+  const [selectedScore, setSelectedScore] = useState(5);
+  const [myScore, setMyScore] = useState<number | null>(null);
   const [replyTo, setReplyTo] = useState<number | null>(null);
   const [replyBody, setReplyBody] = useState("");
   const [pending, setPending] = useState(false);
+  const [ratingPending, setRatingPending] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     setSummary(initialSummary);
   }, [initialSummary]);
+
+  useEffect(() => {
+    if (!user) {
+      setMyScore(null);
+      return;
+    }
+    const controller = new AbortController();
+    fetchAuthenticated(
+      `/api/v1/catalog/products/${encodeURIComponent(slug)}/rating/`,
+      { signal: controller.signal },
+    )
+      .then((response) => (response.ok ? response.json() : Promise.reject()))
+      .then((data: ProductRatingResponse) => {
+        setSummary({ average: data.average, count: data.count });
+        setMyScore(data.my_score);
+        if (data.my_score !== null) setSelectedScore(data.my_score);
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [slug, user?.id]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -2707,19 +2783,11 @@ function ProductReviews({
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ body, rating }),
+          body: JSON.stringify({ body }),
         },
       );
       if (!response.ok) throw new Error(await getError(response));
-      const nextCount = summary.count + 1;
-      setSummary({
-        average: Number(
-          ((summary.average * summary.count + rating) / nextCount).toFixed(1),
-        ),
-        count: nextCount,
-      });
       setBody("");
-      setRating(5);
       setRefreshKey((value) => value + 1);
     } catch (reason) {
       setError(
@@ -2727,6 +2795,35 @@ function ProductReviews({
       );
     } finally {
       setPending(false);
+    }
+  }
+
+  async function submitRating() {
+    if (!user) {
+      onSignIn();
+      return;
+    }
+    setRatingPending(true);
+    setError("");
+    try {
+      const response = await fetchAuthenticated(
+        `/api/v1/catalog/products/${encodeURIComponent(slug)}/rating/`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ score: selectedScore }),
+        },
+      );
+      if (!response.ok) throw new Error(await getError(response));
+      const data = (await response.json()) as ProductRatingResponse;
+      setSummary({ average: data.average, count: data.count });
+      setMyScore(data.my_score);
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : "ثبت امتیاز ناموفق بود.",
+      );
+    } finally {
+      setRatingPending(false);
     }
   }
 
@@ -2785,7 +2882,7 @@ function ProductReviews({
 
       {!user ? (
         <div className="review-auth-prompt">
-          <p>برای ثبت نظر یا پاسخ، ابتدا وارد حساب کاربری شوید.</p>
+          <p>برای ثبت نظر، پاسخ یا امتیاز، ابتدا وارد حساب کاربری شوید.</p>
           <button
             className="button button-primary"
             type="button"
@@ -2795,42 +2892,56 @@ function ProductReviews({
           </button>
         </div>
       ) : (
-        <form className="review-form" onSubmit={submitReview}>
-          <label>
-            تجربهٔ شما از این محصول
-            <textarea
-              value={body}
-              onChange={(event) => setBody(event.target.value)}
-              maxLength={1500}
-              placeholder="نکات مثبت، نقاط قابل بهبود و تجربهٔ استفاده را بنویسید…"
-              required
-            />
-          </label>
-          <div className="rating-picker" aria-label="امتیاز شما">
-            <span>امتیاز شما</span>
-            <div>
-              {[1, 2, 3, 4, 5].map((value) => (
-                <button
-                  className={value <= rating ? "selected" : undefined}
-                  type="button"
-                  key={value}
-                  aria-label={`${value} ستاره`}
-                  aria-pressed={value === rating}
-                  onClick={() => setRating(value)}
-                >
-                  ★
-                </button>
-              ))}
+        <>
+          <div className="user-rating-control">
+            <div className="rating-picker" aria-label="امتیاز شما">
+              <span>
+                {myScore === null ? "امتیاز شما" : "امتیاز ثبت‌شدهٔ شما"}
+              </span>
+              <div>
+                {[1, 2, 3, 4, 5].map((value) => (
+                  <button
+                    className={value <= selectedScore ? "selected" : undefined}
+                    type="button"
+                    key={value}
+                    aria-label={`${value} ستاره`}
+                    aria-pressed={value === selectedScore}
+                    onClick={() => setSelectedScore(value)}
+                  >
+                    ★
+                  </button>
+                ))}
+              </div>
             </div>
+            <button
+              className="button button-secondary"
+              type="button"
+              disabled={ratingPending}
+              onClick={() => void submitRating()}
+            >
+              {ratingPending ? "در حال ثبت…" : "ثبت امتیاز"}
+            </button>
           </div>
-          <button
-            className="button button-primary"
-            type="submit"
-            disabled={pending}
-          >
-            {pending ? "در حال ثبت…" : "ثبت نظر"}
-          </button>
-        </form>
+          <form className="review-form" onSubmit={submitReview}>
+            <label>
+              تجربهٔ شما از این محصول
+              <textarea
+                value={body}
+                onChange={(event) => setBody(event.target.value)}
+                maxLength={1500}
+                placeholder="نکات مثبت، نقاط قابل بهبود و تجربهٔ استفاده را بنویسید…"
+                required
+              />
+            </label>
+            <button
+              className="button button-primary"
+              type="submit"
+              disabled={pending}
+            >
+              {pending ? "در حال ثبت…" : "ثبت نظر"}
+            </button>
+          </form>
+        </>
       )}
       {error && <p className="review-message error">{error}</p>}
       {loading ? (
@@ -2844,7 +2955,6 @@ function ProductReviews({
                   <strong>{review.author_label}</strong>
                   <time>{formatDate(review.created_at)}</time>
                 </div>
-                <span className="review-rating">{review.rating} ★</span>
               </header>
               <p>{review.body}</p>
               <button
@@ -3188,6 +3298,16 @@ function App() {
     if (!response.ok) throw new Error(await getError(response));
     setCart((await response.json()) as Cart);
   }
+  function updateStoredUser(nextUser: AuthUser) {
+    const auth = getStoredAuth();
+    if (auth) {
+      sessionStorage.setItem(
+        "nexora-auth",
+        JSON.stringify({ ...auth, user: nextUser }),
+      );
+    }
+    setUser(nextUser);
+  }
   function openChat() {
     if (!user) {
       setOpenChatAfterAuth(true);
@@ -3230,6 +3350,7 @@ function App() {
     ) : route.name === "profile" ? (
       <ProfilePage
         user={user}
+        onUserUpdated={updateStoredUser}
         onSignOut={() => {
           sessionStorage.removeItem("nexora-auth");
           setUser(null);
