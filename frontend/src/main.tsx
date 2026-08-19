@@ -138,6 +138,7 @@ type OrderItem = {
   id: number;
   product_name: string;
   product_sku: string;
+  product_primary_image: string | null;
   unit_price: string;
   quantity: number;
   line_total: string;
@@ -221,6 +222,7 @@ type Route =
   | { name: "checkout" }
   | { name: "payment-result" }
   | { name: "profile" }
+  | { name: "order-detail"; orderCode: string; adminView: boolean }
   | { name: "admin-dashboard" }
   | { name: "admin-orders" }
   | { name: "admin-catalog" }
@@ -260,10 +262,22 @@ function getRoute(): Route {
   if (parts[0] === "payment-result" && parts.length === 1)
     return { name: "payment-result" };
   if (parts[0] === "profile" && parts.length === 1) return { name: "profile" };
+  if (parts[0] === "orders" && parts.length === 2)
+    return {
+      name: "order-detail",
+      orderCode: decodeURIComponent(parts[1]),
+      adminView: false,
+    };
   if (parts[0] === "admin" && parts.length === 1)
     return { name: "admin-dashboard" };
   if (parts[0] === "admin" && parts[1] === "orders" && parts.length === 2)
     return { name: "admin-orders" };
+  if (parts[0] === "admin" && parts[1] === "orders" && parts.length === 3)
+    return {
+      name: "order-detail",
+      orderCode: decodeURIComponent(parts[2]),
+      adminView: true,
+    };
   if (parts[0] === "admin" && parts[1] === "catalog" && parts.length === 2)
     return { name: "admin-catalog" };
   if (parts[0] === "admin" && parts[1] === "reviews" && parts.length === 2)
@@ -2309,6 +2323,12 @@ function ProfilePage({
                             ))}
                           </ol>
                         )}
+                        <AppLink
+                          className="order-detail-link"
+                          href={`/orders/${encodeURIComponent(order.order_code)}`}
+                        >
+                          مشاهدهٔ جزئیات سفارش
+                        </AppLink>
                       </article>
                     ))}
                   </div>
@@ -2343,6 +2363,187 @@ function ProfilePage({
           )}
         </div>
       </div>
+    </main>
+  );
+}
+
+function OrderDetailPage({
+  user,
+  orderCode,
+  adminView,
+}: {
+  user: AuthUser | null;
+  orderCode: string;
+  adminView: boolean;
+}) {
+  const [order, setOrder] = useState<
+    | (Order & {
+        shipping_full_name: string;
+        shipping_phone: string;
+        shipping_province: string;
+        shipping_city: string;
+        shipping_address_line: string;
+        shipping_postal_code: string;
+        payment_reference: string;
+      })
+    | null
+  >(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!user || (adminView && user.role !== "admin")) return;
+    const controller = new AbortController();
+    setOrder(null);
+    setError("");
+    fetchAuthenticated(`/api/v1/orders/${encodeURIComponent(orderCode)}/`, {
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(await getError(response));
+        return response.json();
+      })
+      .then((data) => setOrder(data))
+      .catch((reason) => {
+        if (!(reason instanceof DOMException && reason.name === "AbortError"))
+          setError(
+            reason instanceof Error
+              ? reason.message
+              : "دریافت جزئیات سفارش ناموفق بود.",
+          );
+      });
+    return () => controller.abort();
+  }, [adminView, orderCode, user?.id, user?.role]);
+
+  if (!user)
+    return (
+      <PageState
+        title="برای مشاهدهٔ سفارش وارد شوید"
+        text="جزئیات خرید فقط برای صاحب سفارش در دسترس است."
+      />
+    );
+  if (adminView && user.role !== "admin")
+    return (
+      <PageState title="دسترسی ندارید" text="این سفارش برای مدیران است." />
+    );
+  if (error)
+    return <PageState title="جزئیات سفارش در دسترس نیست" text={error} />;
+  if (!order)
+    return (
+      <main className="page-state">
+        <span className="detail-loader" />
+        <p>در حال دریافت جزئیات سفارش…</p>
+      </main>
+    );
+
+  const paidOrder = ["paid", "processing", "shipped"].includes(order.status);
+  const backHref = adminView ? "/admin/orders" : "/profile";
+
+  return (
+    <main className="order-detail-page">
+      <div className="order-detail-topbar">
+        <AppLink href={backHref}>بازگشت به سفارش‌ها</AppLink>
+        <span className={`order-status ${order.status}`}>
+          {orderStatusLabels[order.status] ?? order.status}
+        </span>
+      </div>
+      <section className="order-detail-hero">
+        <div>
+          <p className="eyebrow">جزئیات خرید</p>
+          <h1>
+            سفارش <span dir="ltr">{order.order_code}</span>
+          </h1>
+          <p>{formatDate(order.created_at)} ثبت شده است.</p>
+        </div>
+        <div className="order-detail-total">
+          <span>{paidOrder ? "مبلغ پرداخت‌شده" : "مبلغ قابل پرداخت"}</span>
+          <strong>{formatPrice(order.subtotal)} تومان</strong>
+          <small>{orderItemCount(order)} قلم کالا</small>
+        </div>
+      </section>
+      <div className="order-detail-layout">
+        <section className="order-detail-products">
+          <div className="order-detail-section-heading">
+            <h2>کالاهای این سفارش</h2>
+            <span>{orderItemCount(order)} کالا</span>
+          </div>
+          <div className="order-detail-product-list">
+            {order.items.map((item) => (
+              <article className="order-detail-product" key={item.id}>
+                <div className="order-detail-product-image">
+                  {item.product_primary_image ? (
+                    <img
+                      src={item.product_primary_image}
+                      alt={item.product_name}
+                    />
+                  ) : (
+                    <span>{item.product_name.slice(0, 1)}</span>
+                  )}
+                </div>
+                <div className="order-detail-product-copy">
+                  <h3>{item.product_name}</h3>
+                  <span dir="ltr">{item.product_sku}</span>
+                  <p>
+                    {item.quantity} عدد × {formatPrice(item.unit_price)} تومان
+                  </p>
+                </div>
+                <strong>{formatPrice(item.line_total)} تومان</strong>
+              </article>
+            ))}
+          </div>
+        </section>
+        <aside className="order-detail-sidebar">
+          <section>
+            <h2>تحویل گیرنده</h2>
+            <strong>{order.shipping_full_name}</strong>
+            <span dir="ltr">{order.shipping_phone}</span>
+            <p>
+              {order.shipping_province}، {order.shipping_city}
+            </p>
+            <p>{order.shipping_address_line}</p>
+            <small>
+              کد پستی: <span dir="ltr">{order.shipping_postal_code}</span>
+            </small>
+          </section>
+          <section>
+            <h2>پرداخت و پیگیری</h2>
+            <div>
+              <span>تاریخ ثبت</span>
+              <strong>{formatDate(order.created_at)}</strong>
+            </div>
+            <div>
+              <span>وضعیت</span>
+              <strong>{orderStatusLabels[order.status] ?? order.status}</strong>
+            </div>
+            {order.payment_reference && (
+              <div>
+                <span>کد پیگیری پرداخت</span>
+                <strong dir="ltr">{order.payment_reference}</strong>
+              </div>
+            )}
+            {order.status === "pending" && order.expires_at && (
+              <div>
+                <span>مهلت پرداخت</span>
+                <strong>{formatDate(order.expires_at)}</strong>
+              </div>
+            )}
+          </section>
+        </aside>
+      </div>
+      {!!order.status_events.length && (
+        <section className="order-detail-history">
+          <h2>روند سفارش</h2>
+          <ol>
+            {order.status_events.map((event, index) => (
+              <li key={`${event.created_at}-${index}`}>
+                <strong>
+                  {orderStatusLabels[event.to_status] ?? event.to_status}
+                </strong>
+                <span>{formatDate(event.created_at)}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
     </main>
   );
 }
@@ -3288,6 +3489,12 @@ function AdminOrdersPage({ user }: { user: AuthUser | null }) {
                         ))}
                       </select>
                     </label>
+                    <AppLink
+                      className="order-detail-link"
+                      href={`/admin/orders/${encodeURIComponent(order.order_code)}`}
+                    >
+                      جزئیات سفارش
+                    </AppLink>
                   </div>
                 </article>
               );
@@ -4544,6 +4751,12 @@ function App() {
           setChatOpen(false);
           navigate("/");
         }}
+      />
+    ) : route.name === "order-detail" ? (
+      <OrderDetailPage
+        user={user}
+        orderCode={route.orderCode}
+        adminView={route.adminView}
       />
     ) : route.name === "admin-dashboard" ? (
       <AdminDashboardPage user={user} />

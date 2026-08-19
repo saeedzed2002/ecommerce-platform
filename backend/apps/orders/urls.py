@@ -7,6 +7,7 @@ from .views import (
     AdminOrderSummaryAPIView,
     CheckoutAPIView,
     CustomerOrderSummaryAPIView,
+    OrderDetailAPIView,
     OrderListAPIView,
     StartPaymentAPIView,
     ZarinpalCallbackAPIView,
@@ -30,6 +31,7 @@ urlpatterns = [
     path("summary/", CustomerOrderSummaryAPIView.as_view(), name="order-summary"),
     path("", OrderListAPIView.as_view(), name="order-list"),
     path("checkout/", CheckoutAPIView.as_view(), name="checkout"),
+    path("<str:order_code>/", OrderDetailAPIView.as_view(), name="order-detail"),
     path(
         "<uuid:order_number>/payment/",
         StartPaymentAPIView.as_view(),

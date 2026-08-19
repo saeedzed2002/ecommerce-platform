@@ -33,6 +33,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
     line_total = serializers.DecimalField(
         max_digits=12, decimal_places=0, read_only=True
     )
+    product_primary_image = serializers.SerializerMethodField()
 
     class Meta:
         model = OrderItem
@@ -43,7 +44,16 @@ class OrderItemSerializer(serializers.ModelSerializer):
             "unit_price",
             "quantity",
             "line_total",
+            "product_primary_image",
         )
+
+    def get_product_primary_image(self, item: OrderItem) -> str | None:
+        if item.product is None:
+            return None
+        image = next(iter(item.product.images.all()), None)
+        if image is None:
+            return None
+        return image.image.url if image.image else image.image_url or None
 
 
 class OrderStatusEventSerializer(serializers.ModelSerializer):
@@ -84,6 +94,32 @@ class AdminOrderSerializer(OrderSerializer):
             "shipping_full_name",
             "shipping_city",
         )
+
+
+class OrderDetailSerializer(OrderSerializer):
+    payment_reference = serializers.SerializerMethodField()
+
+    class Meta(OrderSerializer.Meta):
+        fields = OrderSerializer.Meta.fields + (
+            "shipping_full_name",
+            "shipping_phone",
+            "shipping_province",
+            "shipping_city",
+            "shipping_address_line",
+            "shipping_postal_code",
+            "payment_reference",
+        )
+
+    def get_payment_reference(self, order: Order) -> str:
+        payment = next(
+            (
+                item
+                for item in order.payment_attempts.all()
+                if item.status == "verified" and item.reference_id
+            ),
+            None,
+        )
+        return payment.reference_id if payment else ""
 
 
 class OrderStatusUpdateSerializer(serializers.Serializer):

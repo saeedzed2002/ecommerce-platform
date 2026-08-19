@@ -4,7 +4,7 @@ from django.db.models import Count, Q
 from django.http import HttpResponseRedirect
 from rest_framework import status
 from rest_framework.exceptions import NotFound, ValidationError
-from rest_framework.generics import ListAPIView, ListCreateAPIView
+from rest_framework.generics import ListAPIView, ListCreateAPIView, RetrieveAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -20,6 +20,7 @@ from .serializers import (
     AddressSerializer,
     AdminOrderSerializer,
     CheckoutSerializer,
+    OrderDetailSerializer,
     OrderSerializer,
     OrderStatusUpdateSerializer,
 )
@@ -50,7 +51,7 @@ class OrderListAPIView(ListAPIView):
 
     def get_queryset(self):
         queryset = Order.objects.filter(user=self.request.user).prefetch_related(
-            "items", "status_events__changed_by"
+            "items__product__images", "status_events__changed_by"
         )
         requested_status = self.request.query_params.get("status", "").strip()
         if requested_status:
@@ -59,6 +60,23 @@ class OrderListAPIView(ListAPIView):
                 raise ValidationError({"status": "Invalid order status."})
             queryset = queryset.filter(status=requested_status)
         return queryset
+
+
+class OrderDetailAPIView(RetrieveAPIView):
+    permission_classes = (IsAuthenticated,)
+    serializer_class = OrderDetailSerializer
+    lookup_field = "order_code"
+    lookup_url_kwarg = "order_code"
+
+    def get_queryset(self):
+        queryset = Order.objects.select_related("user").prefetch_related(
+            "items__product__images",
+            "status_events__changed_by",
+            "payment_attempts",
+        )
+        if self.request.user.is_admin and self.request.user.is_staff:
+            return queryset
+        return queryset.filter(user=self.request.user)
 
 
 class CustomerOrderSummaryAPIView(APIView):
@@ -81,7 +99,7 @@ class AdminOrderListAPIView(ListAPIView):
 
     def get_queryset(self):
         queryset = Order.objects.select_related("user").prefetch_related(
-            "items", "status_events__changed_by"
+            "items__product__images", "status_events__changed_by"
         )
         requested_status = self.request.query_params.get("status", "").strip()
         if requested_status:

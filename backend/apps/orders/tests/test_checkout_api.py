@@ -217,6 +217,16 @@ def test_orders_are_visible_only_to_owner(
     assert len(client.get("/api/v1/orders/").data["results"]) == 1
     assert other_client.get("/api/v1/orders/").data["results"] == []
 
+    order = Order.objects.get(user=user)
+    detail = client.get(f"/api/v1/orders/{order.order_code}/")
+    denied = other_client.get(f"/api/v1/orders/{order.order_code}/")
+
+    assert detail.status_code == 200
+    assert detail.data["order_code"] == order.order_code
+    assert detail.data["shipping_city"] == address.city
+    assert detail.data["items"][0]["product_primary_image"] is None
+    assert denied.status_code == 404
+
 
 @pytest.mark.django_db
 def test_customer_can_filter_and_summarize_own_orders(

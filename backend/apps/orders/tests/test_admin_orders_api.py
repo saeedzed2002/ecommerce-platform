@@ -93,6 +93,11 @@ def test_admin_lists_and_filters_orders(
     assert response.data["results"][0]["order_code"] == paid_order.order_code
     assert response.data["results"][0]["customer_phone"] == customer.phone
 
+    detail = admin_client.get(f"/api/v1/orders/{paid_order.order_code}/")
+
+    assert detail.status_code == 200
+    assert detail.data["shipping_full_name"] == paid_order.shipping_full_name
+
 
 @pytest.mark.django_db
 def test_admin_gets_an_order_summary(
