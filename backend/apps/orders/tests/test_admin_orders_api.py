@@ -90,6 +90,7 @@ def test_admin_lists_and_filters_orders(
     assert response.status_code == 200
     assert response.data["count"] == 1
     assert response.data["results"][0]["number"] == str(paid_order.number)
+    assert response.data["results"][0]["order_code"] == paid_order.order_code
     assert response.data["results"][0]["customer_phone"] == customer.phone
 
 

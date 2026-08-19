@@ -1,9 +1,16 @@
+import secrets
 import uuid
 
 from django.conf import settings
 from django.db import models
 
 from apps.catalog.models import Product, TimeStampedModel
+
+ORDER_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+
+def generate_order_code() -> str:
+    return "".join(secrets.choice(ORDER_CODE_ALPHABET) for _ in range(7))
 
 
 class Address(TimeStampedModel):
@@ -38,6 +45,9 @@ class Order(TimeStampedModel):
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="orders"
     )
     number = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    order_code = models.CharField(
+        max_length=7, unique=True, editable=False, default=generate_order_code
+    )
     status = models.CharField(
         max_length=16, choices=Status.choices, default=Status.PENDING
     )
@@ -54,7 +64,7 @@ class Order(TimeStampedModel):
         ordering = ("-created_at",)
 
     def __str__(self) -> str:
-        return f"Order {self.number}"
+        return f"Order {self.order_code}"
 
 
 class PaymentAttempt(TimeStampedModel):

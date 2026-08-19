@@ -59,6 +59,8 @@ def test_checkout_creates_price_snapshot_reduces_stock_and_keeps_cart_until_paym
 
     assert response.status_code == 201
     assert response.data["subtotal"] == "500000"
+    assert len(response.data["order_code"]) == 7
+    assert response.data["order_code"].isalnum()
     assert response.data["items"][0]["product_name"] == "Product"
     assert CartItem.objects.count() == 1
     product.refresh_from_db()
@@ -78,6 +80,7 @@ def test_checkout_reuses_pending_order_without_reserving_stock_twice(
     assert first.status_code == 201
     assert second.status_code == 201
     assert first.data["number"] == second.data["number"]
+    assert first.data["order_code"] == second.data["order_code"]
     assert Order.objects.count() == 1
     product.refresh_from_db()
     assert product.stock_quantity == 2

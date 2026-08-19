@@ -65,6 +65,7 @@ class OrderSerializer(serializers.ModelSerializer):
         fields = (
             "id",
             "number",
+            "order_code",
             "status",
             "subtotal",
             "expires_at",

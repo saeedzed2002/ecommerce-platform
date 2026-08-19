@@ -150,6 +150,7 @@ type OrderStatusEvent = {
 };
 type Order = {
   number: string;
+  order_code: string;
   status: string;
   subtotal: string;
   expires_at: string | null;
@@ -245,6 +246,10 @@ const specificationLabels: Record<string, string> = {
 
 function formatPrice(value: string) {
   return new Intl.NumberFormat("fa-IR").format(Number(value));
+}
+
+function orderItemCount(order: Order) {
+  return order.items.reduce((total, item) => total + item.quantity, 0);
 }
 function getRoute(): Route {
   const parts = location.pathname.split("/").filter(Boolean);
@@ -355,10 +360,12 @@ function AppLink({
   href,
   children,
   className,
+  onClick,
 }: {
   href: string;
   children: ReactNode;
   className?: string;
+  onClick?: () => void;
 }) {
   return (
     <a
@@ -367,6 +374,7 @@ function AppLink({
       onClick={(event) => {
         event.preventDefault();
         navigate(href);
+        onClick?.();
       }}
     >
       {children}
@@ -634,58 +642,144 @@ function Header({
   profile: () => void;
   cartCount: number;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  function submitSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const query = searchQuery.trim();
+    navigate(query ? `/products?q=${encodeURIComponent(query)}` : "/products");
+    setMenuOpen(false);
+  }
+
+  function closeMenu() {
+    setMenuOpen(false);
+  }
+
   return (
     <>
-      <div className="announcement">
-        ارسال رایگان برای سفارش‌های بالای ۲ میلیون تومان <span>✦</span> تا ۷ روز
-        ضمانت بازگشت کالا
+      <div className="announcement" role="status">
+        <span>ارسال رایگان برای سفارش‌های بالای ۲ میلیون تومان</span>
+        <b>✦</b>
+        <span>۷ روز ضمانت بازگشت کالا</span>
       </div>
       <header className="site-header">
-        <AppLink href="/" className="brand">
-          <span className="brand-mark">n</span>
-          <span>نوکسا</span>
-        </AppLink>
-        <nav className="desktop-nav">
-          <AppLink href="/products">فروشگاه</AppLink>
-          <AppLink href="/products">دسته‌بندی‌ها</AppLink>
-          <a href="/#offers">پیشنهادها</a>
-          <a href="/#about">درباره‌ی ما</a>
-        </nav>
-        <div className="header-actions">
-          <button className="icon-button" aria-label="جست‌وجو">
-            <Icon name="search" />
-          </button>
-          <button className="icon-button" aria-label="علاقه‌مندی‌ها">
-            <Icon name="heart" />
-          </button>
-          <button
-            className="cart-button"
-            aria-label="سبد خرید"
-            onClick={() => navigate("/cart")}
-          >
-            <Icon name="bag" />
-            <span>{formatPrice(String(cartCount))}</span>
-          </button>
-          {user ? (
+        <div className="header-main">
+          <AppLink href="/" className="brand">
+            <span className="brand-mark">n</span>
+            <span>نوکسا</span>
+          </AppLink>
+          <form className="header-search" onSubmit={submitSearch} role="search">
+            <Icon name="search" size={19} />
+            <input
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="جست‌وجوی کالا، برند یا دسته‌بندی"
+              aria-label="جست‌وجوی کالا"
+            />
+            <button type="submit">جست‌وجو</button>
+          </form>
+          <div className="header-actions">
             <button
-              className="account-button signed-in"
+              className="cart-button"
               type="button"
-              onClick={profile}
+              aria-label="سبد خرید"
+              onClick={() => navigate("/cart")}
             >
-              <Icon name="user" size={17} />
-              <span>{user.role === "admin" ? "مدیر" : "پروفایل"}</span>
+              <Icon name="bag" />
+              <span>{formatPrice(String(cartCount))}</span>
             </button>
-          ) : (
-            <button className="account-button" type="button" onClick={signIn}>
-              <Icon name="user" size={17} />
-              <span>ورود | ثبت‌نام</span>
+            {user ? (
+              <button
+                className="account-button signed-in"
+                type="button"
+                onClick={profile}
+              >
+                <Icon name="user" size={17} />
+                <span>{user.role === "admin" ? "پنل مدیریت" : "پروفایل"}</span>
+              </button>
+            ) : (
+              <button className="account-button" type="button" onClick={signIn}>
+                <Icon name="user" size={17} />
+                <span>ورود یا ثبت‌نام</span>
+              </button>
+            )}
+            <button
+              className="menu-button"
+              type="button"
+              aria-label="باز کردن منو"
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen(true)}
+            >
+              <Icon name="menu" />
             </button>
-          )}
-          <button className="menu-button" aria-label="منو">
-            <Icon name="menu" />
-          </button>
+          </div>
+        </div>
+        <div className="header-nav-row">
+          <nav className="desktop-nav" aria-label="ناوبری اصلی">
+            <AppLink href="/products">همهٔ کالاها</AppLink>
+            <AppLink href="/products?type=laptop">لپ‌تاپ</AppLink>
+            <AppLink href="/products?type=mobile">موبایل</AppLink>
+          </nav>
+          <span className="delivery-note">
+            <Icon name="truck" size={17} /> تحویل سریع و مطمئن
+          </span>
         </div>
       </header>
+      {menuOpen && (
+        <div
+          className="menu-backdrop"
+          role="presentation"
+          onMouseDown={closeMenu}
+        >
+          <aside
+            className="menu-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-label="منوی سایت"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="menu-drawer-head">
+              <AppLink href="/" className="brand" onClick={closeMenu}>
+                <span className="brand-mark">n</span>
+                <span>نوکسا</span>
+              </AppLink>
+              <button type="button" onClick={closeMenu} aria-label="بستن منو">
+                <Icon name="close" />
+              </button>
+            </div>
+            <form className="drawer-search" onSubmit={submitSearch}>
+              <Icon name="search" size={18} />
+              <input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="جست‌وجوی کالا"
+              />
+            </form>
+            <nav className="drawer-links">
+              <AppLink href="/products" onClick={closeMenu}>
+                همهٔ کالاها
+              </AppLink>
+              <AppLink href="/products?type=laptop" onClick={closeMenu}>
+                لپ‌تاپ و لوازم جانبی
+              </AppLink>
+              <AppLink href="/products?type=mobile" onClick={closeMenu}>
+                موبایل و لوازم جانبی
+              </AppLink>
+              <AppLink href="/cart" onClick={closeMenu}>
+                سبد خرید
+              </AppLink>
+              <AppLink href="/profile" onClick={closeMenu}>
+                حساب کاربری
+              </AppLink>
+            </nav>
+            <div className="drawer-promo">
+              <Icon name="shield" size={21} />
+              <span>خرید امن با ضمانت اصالت و بازگشت کالا</span>
+            </div>
+          </aside>
+        </div>
+      )}
     </>
   );
 }
@@ -1163,6 +1257,40 @@ function CartPage({
   updateItem: (itemId: number, quantity: number) => Promise<void>;
   removeItem: (itemId: number) => Promise<void>;
 }) {
+  const [cartMessage, setCartMessage] = useState("");
+  const [pendingItemId, setPendingItemId] = useState<number | null>(null);
+
+  function getCartActionMessage(reason: unknown, fallback: string) {
+    const message = reason instanceof Error ? reason.message : fallback;
+    return message.toLowerCase().includes("pending payment")
+      ? "برای تغییر سبد، سفارش در انتظار پرداخت را پرداخت کن یا تا پایان مهلت رزرو صبر کن."
+      : message;
+  }
+
+  async function changeQuantity(item: CartItem, quantity: number) {
+    setPendingItemId(item.id);
+    setCartMessage("");
+    try {
+      await updateItem(item.id, quantity);
+    } catch (reason) {
+      setCartMessage(getCartActionMessage(reason, "تغییر تعداد ناموفق بود."));
+    } finally {
+      setPendingItemId(null);
+    }
+  }
+
+  async function deleteItem(itemId: number) {
+    setPendingItemId(itemId);
+    setCartMessage("");
+    try {
+      await removeItem(itemId);
+    } catch (reason) {
+      setCartMessage(getCartActionMessage(reason, "حذف کالا ناموفق بود."));
+    } finally {
+      setPendingItemId(null);
+    }
+  }
+
   if (!user) {
     return (
       <PageState
@@ -1199,6 +1327,7 @@ function CartPage({
       </div>
       <section className="cart-layout">
         <div className="cart-items">
+          {cartMessage && <p className="cart-action-message">{cartMessage}</p>}
           {cart.items.map((item) => (
             <article className="cart-item" key={item.id}>
               <AppLink
@@ -1222,12 +1351,15 @@ function CartPage({
                 <strong>
                   {formatPrice(item.line_total)} <small>تومان</small>
                 </strong>
+                <small className="cart-unit-price">
+                  قیمت هر کالا: {formatPrice(item.product.price)} تومان
+                </small>
                 <div className="quantity-controls">
                   <button
                     type="button"
                     aria-label="کم کردن تعداد"
-                    disabled={item.quantity === 1}
-                    onClick={() => updateItem(item.id, item.quantity - 1)}
+                    disabled={item.quantity === 1 || pendingItemId === item.id}
+                    onClick={() => void changeQuantity(item, item.quantity - 1)}
                   >
                     −
                   </button>
@@ -1235,7 +1367,8 @@ function CartPage({
                   <button
                     type="button"
                     aria-label="زیاد کردن تعداد"
-                    onClick={() => updateItem(item.id, item.quantity + 1)}
+                    disabled={pendingItemId === item.id}
+                    onClick={() => void changeQuantity(item, item.quantity + 1)}
                   >
                     +
                   </button>
@@ -1244,7 +1377,8 @@ function CartPage({
               <button
                 className="remove-cart-item"
                 type="button"
-                onClick={() => removeItem(item.id)}
+                disabled={pendingItemId === item.id}
+                onClick={() => void deleteItem(item.id)}
               >
                 حذف
               </button>
@@ -1253,6 +1387,20 @@ function CartPage({
         </div>
         <aside className="cart-summary">
           <h2>خلاصه خرید</h2>
+          <ul className="cart-summary-items" aria-label="اقلام سبد خرید">
+            {cart.items.map((item) => (
+              <li key={item.id}>
+                <div>
+                  <strong>{item.product.name}</strong>
+                  <span>
+                    {formatPrice(String(item.quantity))} ×{" "}
+                    {formatPrice(item.product.price)} تومان
+                  </span>
+                </div>
+                <b>{formatPrice(item.line_total)} تومان</b>
+              </li>
+            ))}
+          </ul>
           <div>
             <span>جمع کالاها</span>
             <strong>{formatPrice(cart.subtotal)} تومان</strong>
@@ -1600,6 +1748,9 @@ function ProfilePage({
   });
   const [profileMessage, setProfileMessage] = useState("");
   const [profilePending, setProfilePending] = useState(false);
+  const [profileTab, setProfileTab] = useState<
+    "overview" | "orders" | "details"
+  >("overview");
   useEffect(() => {
     setProfile({
       display_name: user?.display_name ?? "",
@@ -1691,13 +1842,20 @@ function ProfilePage({
       </div>
       <div className="profile-dashboard-layout">
         <aside className="profile-sidebar">
-          <div className="profile-avatar">
-            <Icon name="user" size={29} />
+          <div className="profile-sidebar-user">
+            <div className="profile-avatar">
+              <Icon name="user" size={29} />
+            </div>
+            <div>
+              <strong>{user.display_name || "کاربر"}</strong>
+              <span dir="ltr">{user.phone}</span>
+              <small>{user.role === "admin" ? "مدیر سامانه" : "کاربر"}</small>
+            </div>
           </div>
-          <strong>{user.display_name || "کاربر"}</strong>
-          <span dir="ltr">{user.phone}</span>
-          <span>{user.role === "admin" ? "مدیر سامانه" : "کاربر"}</span>
-          <form className="profile-name-form" onSubmit={updateProfile}>
+          <form
+            className="profile-name-form profile-sidebar-form"
+            onSubmit={updateProfile}
+          >
             <label>
               نام و نام خانوادگی
               <input
@@ -1801,34 +1959,35 @@ function ProfilePage({
           </form>
           <nav className="profile-navigation" aria-label="بخش‌های پروفایل">
             <button
-              className={!statusFilter ? "active" : undefined}
+              className={profileTab === "overview" ? "active" : undefined}
               type="button"
               onClick={() => {
+                setProfileTab("overview");
                 setPage(1);
                 setStatusFilter("");
               }}
             >
-              همه سفارش‌ها
+              نمای کلی حساب
             </button>
             <button
-              className={statusFilter === "pending" ? "active" : undefined}
+              className={profileTab === "orders" ? "active" : undefined}
               type="button"
               onClick={() => {
+                setProfileTab("orders");
                 setPage(1);
-                setStatusFilter("pending");
+                setStatusFilter("");
               }}
             >
-              در انتظار پرداخت
+              سفارش‌های من
             </button>
             <button
-              className={statusFilter === "processing" ? "active" : undefined}
+              className={profileTab === "details" ? "active" : undefined}
               type="button"
               onClick={() => {
-                setPage(1);
-                setStatusFilter("processing");
+                setProfileTab("details");
               }}
             >
-              در حال ارسال
+              اطلاعات حساب
             </button>
           </nav>
           {user.role === "admin" ? (
@@ -1859,138 +2018,329 @@ function ProfilePage({
           </button>
         </aside>
         <div className="profile-dashboard-content">
-          <section
-            className="profile-overview-cards"
-            aria-label="خلاصه سفارش‌ها"
-          >
-            <div>
-              <span>کل سفارش‌ها</span>
-              <strong>{summary?.total ?? "—"}</strong>
+          <section className="profile-account-card">
+            <div className="profile-account-avatar">
+              <Icon name="user" size={25} />
             </div>
             <div>
-              <span>در انتظار پرداخت</span>
-              <strong>{summary?.by_status.pending ?? "—"}</strong>
+              <p>{user.role === "admin" ? "حساب مدیر" : "حساب کاربری"}</p>
+              <h2>{user.display_name || "کاربر نوکسا"}</h2>
+              <span dir="ltr">{user.phone}</span>
             </div>
-            <div>
-              <span>در حال ارسال</span>
-              <strong>{summary?.by_status.processing ?? "—"}</strong>
-            </div>
-            <div>
-              <span>ارسال‌شده</span>
-              <strong>{summary?.by_status.shipped ?? "—"}</strong>
-            </div>
+            <button type="button" onClick={() => setProfileTab("details")}>
+              ویرایش مشخصات
+            </button>
           </section>
-          <section className="orders-section">
-            <div className="orders-heading">
-              <div>
-                <p className="eyebrow">پیگیری خرید</p>
-                <h2>سفارش‌های من</h2>
+          {profileTab === "details" ? (
+            <section className="profile-details-card">
+              <div className="profile-card-heading">
+                <div>
+                  <p className="eyebrow">اطلاعات کاربری</p>
+                  <h2>مشخصات حساب</h2>
+                </div>
+                <span>شماره موبایل قابل تغییر نیست</span>
               </div>
-              <span>{ordersResponse?.count ?? 0} سفارش</span>
-            </div>
-            {loading ? (
-              <p className="orders-state">در حال دریافت سفارش‌ها…</p>
-            ) : error ? (
-              <p className="orders-state error">{error}</p>
-            ) : !orders.length ? (
-              <p className="orders-state">سفارشی با این وضعیت وجود ندارد.</p>
-            ) : (
-              <div className="orders-list">
-                {orders.map((order) => (
-                  <article
-                    className="order-card detailed-order-card"
-                    key={order.number}
-                  >
-                    <div className="order-card-header">
-                      <div>
-                        <span>کد سفارش</span>
-                        <strong dir="ltr">{order.number}</strong>
-                      </div>
-                      <span className={`order-status ${order.status}`}>
-                        {orderStatusLabels[order.status] ?? order.status}
-                      </span>
-                    </div>
-                    <dl className="order-meta">
-                      <div>
-                        <dt>زمان ثبت</dt>
-                        <dd>{formatDate(order.created_at)}</dd>
-                      </div>
-                      <div>
-                        <dt>مبلغ نهایی</dt>
-                        <dd>{formatPrice(order.subtotal)} تومان</dd>
-                      </div>
-                      <div>
-                        <dt>تعداد آیتم‌ها</dt>
-                        <dd>{order.items.length} کالا</dd>
-                      </div>
-                      {order.status === "pending" && order.expires_at && (
-                        <div>
-                          <dt>مهلت پرداخت</dt>
-                          <dd>{formatDate(order.expires_at)}</dd>
-                        </div>
-                      )}
-                    </dl>
-                    <ul className="order-line-items">
-                      {order.items.map((item) => (
-                        <li key={item.id}>
-                          <div>
-                            <strong>{item.product_name}</strong>
-                            <small dir="ltr">{item.product_sku}</small>
-                          </div>
-                          <span>{item.quantity} عدد</span>
-                          <span>{formatPrice(item.unit_price)} تومان</span>
-                          <strong>{formatPrice(item.line_total)} تومان</strong>
-                        </li>
-                      ))}
-                    </ul>
-                    {!!order.status_events.length && (
-                      <ol className="order-status-history">
-                        {order.status_events.map((event, index) => (
-                          <li key={`${event.created_at}-${index}`}>
-                            <span>
-                              {orderStatusLabels[event.to_status] ??
-                                event.to_status}
-                              {event.changed_by_phone
-                                ? ` — ${event.changed_by_phone}`
-                                : ""}
-                            </span>
-                            <time dateTime={event.created_at}>
-                              {formatDate(event.created_at)}
-                            </time>
-                          </li>
-                        ))}
-                      </ol>
-                    )}
-                  </article>
-                ))}
-              </div>
-            )}
-            {!loading &&
-              !error &&
-              ordersResponse &&
-              (ordersResponse.next || ordersResponse.previous) && (
-                <nav
-                  className="orders-pagination"
-                  aria-label="صفحه‌بندی سفارش‌ها"
-                >
+              <form className="profile-details-form" onSubmit={updateProfile}>
+                <label>
+                  نام و نام خانوادگی
+                  <input
+                    value={profile.display_name}
+                    maxLength={80}
+                    onChange={(event) =>
+                      setProfile((current) => ({
+                        ...current,
+                        display_name: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  ایمیل
+                  <input
+                    type="email"
+                    value={profile.email}
+                    onChange={(event) =>
+                      setProfile((current) => ({
+                        ...current,
+                        email: event.target.value,
+                      }))
+                    }
+                    dir="ltr"
+                  />
+                </label>
+                <label>
+                  شماره موبایل
+                  <input value={user.phone} readOnly dir="ltr" />
+                </label>
+                <label>
+                  تاریخ تولد
+                  <input
+                    type="date"
+                    value={profile.birth_date}
+                    onChange={(event) =>
+                      setProfile((current) => ({
+                        ...current,
+                        birth_date: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  استان
+                  <input
+                    value={profile.province}
+                    maxLength={80}
+                    onChange={(event) =>
+                      setProfile((current) => ({
+                        ...current,
+                        province: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  شهر
+                  <input
+                    value={profile.city}
+                    maxLength={80}
+                    onChange={(event) =>
+                      setProfile((current) => ({
+                        ...current,
+                        city: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  کد پستی
+                  <input
+                    value={profile.postal_code}
+                    maxLength={10}
+                    inputMode="numeric"
+                    onChange={(event) =>
+                      setProfile((current) => ({
+                        ...current,
+                        postal_code: event.target.value,
+                      }))
+                    }
+                    dir="ltr"
+                  />
+                </label>
+                <label className="wide">
+                  نشانی منزل
+                  <textarea
+                    value={profile.home_address}
+                    maxLength={1000}
+                    onChange={(event) =>
+                      setProfile((current) => ({
+                        ...current,
+                        home_address: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <div className="profile-form-actions">
                   <button
-                    type="button"
-                    disabled={!ordersResponse.next}
-                    onClick={() => setPage((current) => current + 1)}
+                    className="button button-primary"
+                    type="submit"
+                    disabled={profilePending}
                   >
-                    سفارش‌های قدیمی‌تر
+                    {profilePending ? "در حال ذخیره…" : "ذخیره تغییرات"}
                   </button>
-                  <span>صفحه {page}</span>
+                  {profileMessage && <span>{profileMessage}</span>}
+                </div>
+              </form>
+            </section>
+          ) : (
+            <>
+              <section
+                className="profile-overview-cards"
+                aria-label="خلاصه سفارش‌ها"
+              >
+                <div>
+                  <span>کل سفارش‌ها</span>
+                  <strong>{summary?.total ?? "—"}</strong>
+                </div>
+                <div>
+                  <span>در انتظار پرداخت</span>
+                  <strong>{summary?.by_status.pending ?? "—"}</strong>
+                </div>
+                <div>
+                  <span>در حال ارسال</span>
+                  <strong>{summary?.by_status.processing ?? "—"}</strong>
+                </div>
+                <div>
+                  <span>ارسال‌شده</span>
+                  <strong>{summary?.by_status.shipped ?? "—"}</strong>
+                </div>
+              </section>
+              <section className="orders-section profile-orders-card">
+                <div className="orders-heading">
+                  <div>
+                    <p className="eyebrow">پیگیری خرید</p>
+                    <h2>سفارش‌های من</h2>
+                  </div>
+                  <span>{ordersResponse?.count ?? 0} سفارش</span>
+                </div>
+                <nav className="profile-order-tabs" aria-label="فیلتر سفارش‌ها">
                   <button
+                    className={!statusFilter ? "active" : undefined}
                     type="button"
-                    disabled={!ordersResponse.previous}
-                    onClick={() => setPage((current) => current - 1)}
+                    onClick={() => {
+                      setPage(1);
+                      setStatusFilter("");
+                    }}
                   >
-                    سفارش‌های جدیدتر
+                    همه
+                  </button>
+                  <button
+                    className={
+                      statusFilter === "pending" ? "active" : undefined
+                    }
+                    type="button"
+                    onClick={() => {
+                      setPage(1);
+                      setStatusFilter("pending");
+                    }}
+                  >
+                    در انتظار پرداخت
+                  </button>
+                  <button
+                    className={
+                      statusFilter === "processing" ? "active" : undefined
+                    }
+                    type="button"
+                    onClick={() => {
+                      setPage(1);
+                      setStatusFilter("processing");
+                    }}
+                  >
+                    در حال پردازش
+                  </button>
+                  <button
+                    className={
+                      statusFilter === "shipped" ? "active" : undefined
+                    }
+                    type="button"
+                    onClick={() => {
+                      setPage(1);
+                      setStatusFilter("shipped");
+                    }}
+                  >
+                    ارسال‌شده
                   </button>
                 </nav>
-              )}
-          </section>
+                {loading ? (
+                  <p className="orders-state">در حال دریافت سفارش‌ها…</p>
+                ) : error ? (
+                  <p className="orders-state error">{error}</p>
+                ) : !orders.length ? (
+                  <p className="orders-state">
+                    سفارشی با این وضعیت وجود ندارد.
+                  </p>
+                ) : (
+                  <div className="orders-list">
+                    {orders.map((order) => (
+                      <article
+                        className="order-card detailed-order-card"
+                        key={order.number}
+                      >
+                        <div className="order-card-header">
+                          <div>
+                            <span>کد سفارش</span>
+                            <strong dir="ltr">{order.order_code}</strong>
+                          </div>
+                          <span className={`order-status ${order.status}`}>
+                            {orderStatusLabels[order.status] ?? order.status}
+                          </span>
+                        </div>
+                        <dl className="order-meta">
+                          <div>
+                            <dt>زمان ثبت</dt>
+                            <dd>{formatDate(order.created_at)}</dd>
+                          </div>
+                          <div>
+                            <dt>مبلغ نهایی</dt>
+                            <dd>{formatPrice(order.subtotal)} تومان</dd>
+                          </div>
+                          <div>
+                            <dt>تعداد آیتم‌ها</dt>
+                            <dd>{orderItemCount(order)} کالا</dd>
+                          </div>
+                          {order.status === "pending" && order.expires_at && (
+                            <div>
+                              <dt>مهلت پرداخت</dt>
+                              <dd>{formatDate(order.expires_at)}</dd>
+                            </div>
+                          )}
+                        </dl>
+                        <ul className="order-line-items">
+                          {order.items.map((item) => (
+                            <li key={item.id}>
+                              <div>
+                                <strong>{item.product_name}</strong>
+                                <small dir="ltr">{item.product_sku}</small>
+                              </div>
+                              <span>{item.quantity} عدد</span>
+                              <span>
+                                قیمت واحد: {formatPrice(item.unit_price)} تومان
+                              </span>
+                              <strong>
+                                {formatPrice(item.line_total)} تومان
+                              </strong>
+                            </li>
+                          ))}
+                        </ul>
+                        {!!order.status_events.length && (
+                          <ol className="order-status-history">
+                            {order.status_events.map((event, index) => (
+                              <li key={`${event.created_at}-${index}`}>
+                                <span>
+                                  {orderStatusLabels[event.to_status] ??
+                                    event.to_status}
+                                  {event.changed_by_phone
+                                    ? ` — ${event.changed_by_phone}`
+                                    : ""}
+                                </span>
+                                <time dateTime={event.created_at}>
+                                  {formatDate(event.created_at)}
+                                </time>
+                              </li>
+                            ))}
+                          </ol>
+                        )}
+                      </article>
+                    ))}
+                  </div>
+                )}
+                {!loading &&
+                  !error &&
+                  ordersResponse &&
+                  (ordersResponse.next || ordersResponse.previous) && (
+                    <nav
+                      className="orders-pagination"
+                      aria-label="صفحه‌بندی سفارش‌ها"
+                    >
+                      <button
+                        type="button"
+                        disabled={!ordersResponse.next}
+                        onClick={() => setPage((current) => current + 1)}
+                      >
+                        سفارش‌های قدیمی‌تر
+                      </button>
+                      <span>صفحه {page}</span>
+                      <button
+                        type="button"
+                        disabled={!ordersResponse.previous}
+                        onClick={() => setPage((current) => current - 1)}
+                      >
+                        سفارش‌های جدیدتر
+                      </button>
+                    </nav>
+                  )}
+              </section>
+            </>
+          )}
         </div>
       </div>
     </main>
@@ -2890,7 +3240,7 @@ function AdminOrdersPage({ user }: { user: AuthUser | null }) {
                   <div className="order-card-header">
                     <div>
                       <span>کد سفارش</span>
-                      <strong dir="ltr">{order.number}</strong>
+                      <strong dir="ltr">{order.order_code}</strong>
                     </div>
                     <span className={`order-status ${order.status}`}>
                       {orderStatusLabels[order.status] ?? order.status}
@@ -2915,7 +3265,7 @@ function AdminOrdersPage({ user }: { user: AuthUser | null }) {
                     </div>
                   </dl>
                   <div className="admin-order-footer">
-                    <span>{order.items.length} قلم کالا</span>
+                    <span>{orderItemCount(order)} قلم کالا</span>
                     <label className="admin-status-control">
                       <span>تغییر وضعیت</span>
                       <select
@@ -4020,6 +4370,58 @@ function PageState({ title, text }: { title: string; text: string }) {
   );
 }
 
+function SiteFooter() {
+  return (
+    <footer id="about" className="site-footer">
+      <div className="footer-top">
+        <AppLink href="/" className="brand">
+          <span className="brand-mark">n</span>
+          <span>نوکسا</span>
+        </AppLink>
+        <p>انتخاب آگاهانه برای خرید روزمرهٔ تکنولوژی.</p>
+        <button
+          type="button"
+          className="back-to-top"
+          onClick={() => scrollTo({ top: 0, behavior: "smooth" })}
+        >
+          بازگشت به بالا <Icon name="arrow" size={16} />
+        </button>
+      </div>
+      <div className="footer-grid">
+        <section>
+          <h3>خرید از نوکسا</h3>
+          <AppLink href="/products">همهٔ کالاها</AppLink>
+          <AppLink href="/products?type=laptop">لپ‌تاپ</AppLink>
+          <AppLink href="/products?type=mobile">موبایل</AppLink>
+        </section>
+        <section>
+          <h3>حساب کاربری</h3>
+          <AppLink href="/profile">پروفایل من</AppLink>
+          <AppLink href="/cart">سبد خرید</AppLink>
+          <AppLink href="/checkout">پیگیری سفارش</AppLink>
+        </section>
+        <section>
+          <h3>چرا نوکسا</h3>
+          <span>ضمانت اصالت کالا</span>
+          <span>ارسال سریع و مطمئن</span>
+          <span>پشتیبانی پاسخ‌گو</span>
+        </section>
+        <section className="footer-support">
+          <Icon name="support" size={24} />
+          <div>
+            <strong>پشتیبانی نوکسا</strong>
+            <span>هر روز، از ۹ تا ۲۱</span>
+          </div>
+        </section>
+      </div>
+      <div className="footer-bottom">
+        <span>© ۱۴۰۵ نوکسا. تمامی حقوق محفوظ است.</span>
+        <span>حریم خصوصی · شرایط استفاده</span>
+      </div>
+    </footer>
+  );
+}
+
 function App() {
   const [route, setRoute] = useState<Route>(getRoute);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -4175,14 +4577,7 @@ function App() {
         <Icon name="support" size={26} />
       </button>
       {page}
-      <footer id="about">
-        <AppLink className="brand" href="/">
-          <span className="brand-mark">n</span>
-          <span>نوکسا</span>
-        </AppLink>
-        <p>یک تجربه‌ی ساده‌تر برای انتخاب و خرید بهتر.</p>
-        <small>© ۱۴۰۵ نوکسا. تمامی حقوق محفوظ است.</small>
-      </footer>
+      <SiteFooter />
       {authOpen && (
         <AuthDialog
           onClose={() => setAuthOpen(false)}

@@ -93,7 +93,9 @@ class AdminOrderListAPIView(ListAPIView):
         query = self.request.query_params.get("query", "").strip()
         if query:
             queryset = queryset.filter(
-                Q(number__icontains=query) | Q(user__phone__icontains=query)
+                Q(number__icontains=query)
+                | Q(order_code__icontains=query)
+                | Q(user__phone__icontains=query)
             )
         return queryset
 
