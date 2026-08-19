@@ -10,6 +10,7 @@ from rest_framework.generics import (
     ListAPIView,
     ListCreateAPIView,
     RetrieveAPIView,
+    RetrieveUpdateDestroyAPIView,
 )
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -18,6 +19,7 @@ from rest_framework.views import APIView
 from .models import Category, MobileSpecification, Product, ProductReview
 from .permissions import IsPlatformAdmin
 from .serializers import (
+    AdminCategorySerializer,
     AdminProductListSerializer,
     AdminProductReviewSerializer,
     AdminProductSerializer,
@@ -36,6 +38,11 @@ class CategoryListAPIView(ListAPIView):
     serializer_class = CategorySerializer
     queryset = Category.objects.filter(is_active=True)
     pagination_class = None
+
+
+class AdminCategoryCreateAPIView(CreateAPIView):
+    permission_classes = (IsPlatformAdmin,)
+    serializer_class = AdminCategorySerializer
 
 
 class ProductListAPIView(ListAPIView):
@@ -82,6 +89,8 @@ class ProductListAPIView(ListAPIView):
                 Q(name__icontains=query)
                 | Q(sku__icontains=query)
                 | Q(brand__icontains=query)
+                | Q(short_description__icontains=query)
+                | Q(description__icontains=query)
             )
         if self.request.query_params.get("featured") == "true":
             queryset = queryset.filter(is_featured=True)
@@ -117,6 +126,15 @@ class ProductListAPIView(ListAPIView):
                 queryset = queryset.filter(
                     laptop_specification__processor__icontains=processor
                 )
+            display_size_min = self._positive_decimal("display_size_min")
+            if display_size_min is not None:
+                queryset = queryset.filter(
+                    laptop_specification__display_size_inches__gte=display_size_min
+                )
+            if graphics := self.request.query_params.get("graphics", "").strip():
+                queryset = queryset.filter(
+                    laptop_specification__graphics__icontains=graphics
+                )
         if product_type == Product.Type.MOBILE:
             if ram_min is not None:
                 queryset = queryset.filter(mobile_specification__ram_gb__gte=ram_min)
@@ -131,6 +149,16 @@ class ProductListAPIView(ListAPIView):
                 if network not in valid_networks:
                     raise ValidationError({"network": "Unsupported mobile network."})
                 queryset = queryset.filter(mobile_specification__network=network)
+            camera_min = self._positive_integer("camera_min")
+            if camera_min is not None:
+                queryset = queryset.filter(
+                    mobile_specification__camera_megapixels__gte=camera_min
+                )
+            battery_min = self._positive_integer("battery_min")
+            if battery_min is not None:
+                queryset = queryset.filter(
+                    mobile_specification__battery_mah__gte=battery_min
+                )
         ordering = self.request.query_params.get("ordering")
         return queryset.order_by(
             {"price": "price", "-price": "-price", "newest": "-created_at"}.get(
@@ -277,7 +305,27 @@ class AdminProductListAPIView(ListAPIView):
     pagination_class = None
 
     def get_queryset(self):
-        return Product.objects.annotate(review_count=Count("reviews")).order_by("name")
+        queryset = (
+            Product.objects.select_related("category")
+            .prefetch_related("images")
+            .annotate(review_count=Count("reviews"))
+            .order_by("name")
+        )
+        if query := self.request.query_params.get("q", "").strip():
+            queryset = queryset.filter(
+                Q(name__icontains=query)
+                | Q(sku__icontains=query)
+                | Q(brand__icontains=query)
+                | Q(short_description__icontains=query)
+            )
+        return queryset
+
+
+class AdminProductDetailAPIView(RetrieveUpdateDestroyAPIView):
+    permission_classes = (IsPlatformAdmin,)
+    serializer_class = AdminProductSerializer
+    lookup_field = "slug"
+    queryset = Product.objects.select_related("category").prefetch_related("images")
 
 
 class AdminProductReviewListAPIView(ListAPIView):

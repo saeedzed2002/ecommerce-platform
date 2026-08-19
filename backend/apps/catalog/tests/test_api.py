@@ -1,3 +1,4 @@
+from base64 import b64decode
 from decimal import Decimal
 
 import pytest
@@ -44,6 +45,71 @@ def test_category_list_exposes_only_active_categories() -> None:
 
     assert response.status_code == 200
     assert [category["slug"] for category in response.json()] == ["active"]
+
+
+@pytest.mark.django_db
+def test_admin_can_create_categories_with_automatic_slugs() -> None:
+    customer = User.objects.create_user(phone="989121234567")
+    admin = User.objects.create_user(
+        phone="989198765432", role=User.Role.ADMIN, is_staff=True
+    )
+    client = APIClient()
+
+    client.force_authenticate(customer)
+    forbidden_response = client.post(
+        "/api/v1/catalog/admin/categories/", {"name": "Samsung"}, format="json"
+    )
+
+    client.force_authenticate(admin)
+    first_response = client.post(
+        "/api/v1/catalog/admin/categories/",
+        {"name": "Samsung", "description": "Android phones"},
+        format="json",
+    )
+    duplicate_response = client.post(
+        "/api/v1/catalog/admin/categories/", {"name": "Samsung"}, format="json"
+    )
+
+    assert forbidden_response.status_code == 403
+    assert first_response.status_code == 201
+    assert first_response.data["slug"] == "samsung"
+    assert duplicate_response.status_code == 201
+    assert duplicate_response.data["slug"] == "samsung-2"
+
+
+@pytest.mark.django_db
+def test_admin_can_create_category_with_an_uploaded_image(tmp_path) -> None:
+    admin = User.objects.create_user(
+        phone="989198765432", role=User.Role.ADMIN, is_staff=True
+    )
+    client = APIClient()
+    client.force_authenticate(admin)
+
+    with override_settings(
+        STORAGES={
+            "default": {
+                "BACKEND": "django.core.files.storage.FileSystemStorage",
+                "OPTIONS": {"location": str(tmp_path)},
+            }
+        }
+    ):
+        response = client.post(
+            "/api/v1/catalog/admin/categories/",
+            {
+                "name": "Apple",
+                "image": SimpleUploadedFile(
+                    "apple.gif",
+                    b64decode("R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="),
+                    content_type="image/gif",
+                ),
+            },
+            format="multipart",
+        )
+
+    assert response.status_code == 201, response.data
+    category = Category.objects.get(name="Apple")
+    assert category.image.name.startswith("categories/")
+    assert response.data["image_url"].endswith(category.image.name)
 
 
 @pytest.mark.django_db
@@ -111,6 +177,7 @@ def test_product_api_filters_laptops_with_common_and_laptop_specific_filters() -
         ram_gb=16,
         storage_gb=1024,
         display_size_inches=Decimal("14.0"),
+        graphics="Intel Arc",
     )
     lower_spec = create_product(category, slug="lower-spec", price=Decimal(20000000))
     LaptopSpecification.objects.create(
@@ -123,11 +190,32 @@ def test_product_api_filters_laptops_with_common_and_laptop_specific_filters() -
 
     response = APIClient().get(
         "/api/v1/catalog/products/?type=laptop&brand=nexora&min_price=25000000"
-        "&ram_min=16&storage_min=1024&processor=ultra&in_stock=true"
+        "&ram_min=16&storage_min=1024&processor=ultra&display_size_min=14"
+        "&graphics=arc&in_stock=true"
     )
 
     assert response.status_code == 200
     assert [item["slug"] for item in response.data["results"]] == ["laptop"]
+
+
+@pytest.mark.django_db
+def test_product_search_matches_brand_and_descriptions() -> None:
+    category = Category.objects.create(name="Laptops", slug="laptops")
+    product = create_product(category, slug="searchable-laptop")
+    product.brand = "Lenovo"
+    product.short_description = "Portable machine for developers"
+    product.description = "Lightweight laptop with a bright display"
+    product.save(update_fields=["brand", "short_description", "description"])
+
+    brand_response = APIClient().get("/api/v1/catalog/products/?q=lenovo")
+    description_response = APIClient().get(
+        "/api/v1/catalog/products/?q=bright%20display"
+    )
+
+    assert [item["slug"] for item in brand_response.data["results"]] == [product.slug]
+    assert [item["slug"] for item in description_response.data["results"]] == [
+        product.slug
+    ]
 
 
 @pytest.mark.django_db
@@ -148,6 +236,7 @@ def test_product_detail_and_mobile_filters_expose_mobile_specifications() -> Non
 
     list_response = APIClient().get(
         "/api/v1/catalog/products/?type=mobile&ram_min=8&storage_min=128&network=5g"
+        "&camera_min=50&battery_min=5000"
     )
     detail_response = APIClient().get("/api/v1/catalog/products/mobile/")
 
@@ -325,9 +414,8 @@ def test_admin_can_create_products_and_moderate_reviews() -> None:
             "category": category.id,
             "product_type": "laptop",
             "name": "Admin product",
-            "slug": "admin-product",
-            "sku": "ADMIN-001",
             "price": "1000000",
+            "discount_percent": 20,
             "stock_quantity": 2,
             "status": "published",
             "laptop_specification": {
@@ -353,11 +441,61 @@ def test_admin_can_create_products_and_moderate_reviews() -> None:
 
     assert product_response.status_code == 201
     assert product_response.data["slug"] == "admin-product"
+    assert product_response.data["sku"].startswith("SKU-")
+    assert product_response.data["compare_at_price"] == "1250000"
     assert reviews_response.status_code == 200
     assert reviews_response.data["results"][0]["moderation_status"] == "approved"
     assert moderation_response.status_code == 200
     assert moderation_response.data["moderation_status"] == "rejected"
     assert public_reviews.data["results"] == []
+
+
+@pytest.mark.django_db
+def test_admin_can_search_update_and_delete_products() -> None:
+    category = Category.objects.create(name="Laptops", slug="laptops")
+    other_category = Category.objects.create(name="Mobiles", slug="mobiles")
+    product = create_product(category, slug="managed-laptop")
+    product.brand = "Lenovo"
+    product.stock_quantity = 2
+    product.save(update_fields=("brand", "stock_quantity"))
+    customer = User.objects.create_user(phone="989121234567")
+    admin = User.objects.create_user(
+        phone="989198765432", role=User.Role.ADMIN, is_staff=True
+    )
+    client = APIClient()
+
+    client.force_authenticate(customer)
+    forbidden_response = client.patch(
+        f"/api/v1/catalog/admin/products/{product.slug}/",
+        {"stock_quantity": 5},
+        format="json",
+    )
+
+    client.force_authenticate(admin)
+    search_response = client.get("/api/v1/catalog/admin/products/list/?q=lenovo")
+    update_response = client.patch(
+        f"/api/v1/catalog/admin/products/{product.slug}/",
+        {
+            "category": other_category.id,
+            "brand": "Apple",
+            "price": "1250000",
+            "stock_quantity": 5,
+            "status": "archived",
+        },
+        format="json",
+    )
+    delete_response = client.delete(f"/api/v1/catalog/admin/products/{product.slug}/")
+
+    assert forbidden_response.status_code == 403
+    assert search_response.status_code == 200
+    assert [item["slug"] for item in search_response.data] == [product.slug]
+    assert update_response.status_code == 200
+    assert update_response.data["category"] == other_category.id
+    assert update_response.data["brand"] == "Apple"
+    assert update_response.data["stock_quantity"] == 5
+    assert update_response.data["status"] == "archived"
+    assert delete_response.status_code == 204
+    assert not Product.objects.filter(pk=product.pk).exists()
 
 
 @pytest.mark.django_db
@@ -385,8 +523,6 @@ def test_admin_product_creation_accepts_type_details_and_multiple_images(
                 "category": str(category.id),
                 "product_type": "mobile",
                 "name": "Admin mobile",
-                "slug": "admin-mobile",
-                "sku": "ADMIN-MOBILE-001",
                 "price": "1000000",
                 "stock_quantity": "2",
                 "status": "draft",
@@ -407,7 +543,9 @@ def test_admin_product_creation_accepts_type_details_and_multiple_images(
         )
 
     assert response.status_code == 201
-    created = Product.objects.get(slug="admin-mobile")
+    created = Product.objects.get(name="Admin mobile")
+    assert created.slug == "admin-mobile"
+    assert created.sku.startswith("SKU-")
     assert created.mobile_specification.ram_gb == 12
     assert list(created.images.values_list("alt_text", flat=True)) == [
         "Product image",

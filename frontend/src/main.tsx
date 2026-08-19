@@ -129,10 +129,19 @@ type AdminReview = {
 };
 type AdminProduct = {
   id: number;
+  category: number;
+  category_name: string;
+  product_type: "laptop" | "mobile";
   name: string;
   slug: string;
+  sku: string;
+  brand: string;
+  short_description: string;
+  price: string;
+  stock_quantity: number;
   status: "draft" | "published" | "archived";
   review_count: number;
+  primary_image: string | null;
 };
 type AuthResponse = { access: string; refresh: string; user: AuthUser };
 type OrderItem = {
@@ -227,6 +236,7 @@ type Route =
   | { name: "admin-dashboard" }
   | { name: "admin-orders" }
   | { name: "admin-catalog" }
+  | { name: "admin-products" }
   | { name: "admin-reviews" }
   | { name: "chat" }
   | { name: "admin-chat" }
@@ -249,6 +259,11 @@ const specificationLabels: Record<string, string> = {
 
 function formatPrice(value: string) {
   return new Intl.NumberFormat("fa-IR").format(Number(value));
+}
+
+function resolveMediaUrl(url: string | null) {
+  if (!url || /^https?:\/\//i.test(url)) return url;
+  return `${apiBaseUrl}${url.startsWith("/") ? url : `/${url}`}`;
 }
 
 function orderItemCount(order: Order) {
@@ -281,6 +296,8 @@ function getRoute(): Route {
     };
   if (parts[0] === "admin" && parts[1] === "catalog" && parts.length === 2)
     return { name: "admin-catalog" };
+  if (parts[0] === "admin" && parts[1] === "products" && parts.length === 2)
+    return { name: "admin-products" };
   if (parts[0] === "admin" && parts[1] === "reviews" && parts.length === 2)
     return { name: "admin-reviews" };
   if (parts[0] === "chat" && parts.length === 1) return { name: "chat" };
@@ -965,7 +982,15 @@ function HomePage({ categories }: { categories: Category[] }) {
               className={`category-card ${categoryTones[index % categoryTones.length]}`}
               key={category.id}
             >
-              <span>{categoryIcons[index % categoryIcons.length]}</span>
+              {category.image_url ? (
+                <img
+                  className="category-image"
+                  src={resolveMediaUrl(category.image_url) ?? undefined}
+                  alt={category.name}
+                />
+              ) : (
+                <span>{categoryIcons[index % categoryIcons.length]}</span>
+              )}
               <div>
                 <h3>{category.name}</h3>
                 <p>{category.description || "مشاهده‌ی محصولات"}</p>
@@ -1025,9 +1050,16 @@ function CatalogPage({
     if (!value) nextFilters.delete(name);
     else nextFilters.set(name, String(value));
     if (name === "type") {
-      ["ram_min", "storage_min", "processor", "network"].forEach((key) =>
-        nextFilters.delete(key),
-      );
+      [
+        "ram_min",
+        "storage_min",
+        "processor",
+        "display_size_min",
+        "graphics",
+        "network",
+        "camera_min",
+        "battery_min",
+      ].forEach((key) => nextFilters.delete(key));
     }
     navigate(catalogPath(nextFilters));
   }
@@ -1051,7 +1083,11 @@ function CatalogPage({
       "ram_min",
       "storage_min",
       "processor",
+      "display_size_min",
+      "graphics",
       "network",
+      "camera_min",
+      "battery_min",
     ].forEach((name) => {
       const value = String(data.get(name) ?? "").trim();
       if (value) nextFilters.set(name, value);
@@ -1140,7 +1176,7 @@ function CatalogPage({
               <input
                 name="q"
                 defaultValue={filters.get("q") ?? ""}
-                placeholder="نام، برند یا کد کالا"
+                placeholder="نام، برند یا توضیحات کالا"
               />
             </label>
             <label>
@@ -1200,26 +1236,81 @@ function CatalogPage({
                   </label>
                 </div>
                 {productType === "laptop" ? (
-                  <label>
-                    <span>پردازنده</span>
-                    <input
-                      name="processor"
-                      defaultValue={filters.get("processor") ?? ""}
-                      placeholder="مثلاً Core Ultra"
-                    />
-                  </label>
+                  <>
+                    <div className="price-filter-row">
+                      <label>
+                        <span>پردازنده</span>
+                        <input
+                          name="processor"
+                          defaultValue={filters.get("processor") ?? ""}
+                          placeholder="مثلاً Core Ultra"
+                        />
+                      </label>
+                      <label>
+                        <span>حداقل اندازه نمایشگر</span>
+                        <select
+                          name="display_size_min"
+                          defaultValue={filters.get("display_size_min") ?? ""}
+                        >
+                          <option value="">همه</option>
+                          <option value="13">۱۳ اینچ</option>
+                          <option value="14">۱۴ اینچ</option>
+                          <option value="15">۱۵ اینچ</option>
+                          <option value="16">۱۶ اینچ</option>
+                        </select>
+                      </label>
+                    </div>
+                    <label>
+                      <span>گرافیک</span>
+                      <input
+                        name="graphics"
+                        defaultValue={filters.get("graphics") ?? ""}
+                        placeholder="مثلاً RTX یا Arc"
+                      />
+                    </label>
+                  </>
                 ) : (
-                  <label>
-                    <span>نسل شبکه</span>
-                    <select
-                      name="network"
-                      defaultValue={filters.get("network") ?? ""}
-                    >
-                      <option value="">همه</option>
-                      <option value="5g">۵G</option>
-                      <option value="4g">۴G</option>
-                    </select>
-                  </label>
+                  <>
+                    <div className="price-filter-row">
+                      <label>
+                        <span>حداقل دوربین</span>
+                        <select
+                          name="camera_min"
+                          defaultValue={filters.get("camera_min") ?? ""}
+                        >
+                          <option value="">همه</option>
+                          <option value="12">۱۲ مگاپیکسل</option>
+                          <option value="48">۴۸ مگاپیکسل</option>
+                          <option value="50">۵۰ مگاپیکسل</option>
+                          <option value="108">۱۰۸ مگاپیکسل</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>حداقل باتری</span>
+                        <select
+                          name="battery_min"
+                          defaultValue={filters.get("battery_min") ?? ""}
+                        >
+                          <option value="">همه</option>
+                          <option value="4000">۴۰۰۰ میلی‌آمپرساعت</option>
+                          <option value="4500">۴۵۰۰ میلی‌آمپرساعت</option>
+                          <option value="5000">۵۰۰۰ میلی‌آمپرساعت</option>
+                          <option value="6000">۶۰۰۰ میلی‌آمپرساعت</option>
+                        </select>
+                      </label>
+                    </div>
+                    <label>
+                      <span>نسل شبکه</span>
+                      <select
+                        name="network"
+                        defaultValue={filters.get("network") ?? ""}
+                      >
+                        <option value="">همه</option>
+                        <option value="5g">۵G</option>
+                        <option value="4g">۴G</option>
+                      </select>
+                    </label>
+                  </>
                 )}
               </>
             )}
@@ -2016,6 +2107,9 @@ function ProfilePage({
               <AppLink className="admin-dashboard-link" href="/admin/catalog">
                 ایجاد کالا
               </AppLink>
+              <AppLink className="admin-dashboard-link" href="/admin/products">
+                مدیریت کالاها
+              </AppLink>
               <AppLink className="admin-dashboard-link" href="/admin/reviews">
                 مدیریت نظرها
               </AppLink>
@@ -2635,6 +2729,9 @@ function AdminDashboardPage({ user }: { user: AuthUser | null }) {
             <AppLink className="admin-dashboard-link" href="/admin/catalog">
               ایجاد کالا
             </AppLink>
+            <AppLink className="admin-dashboard-link" href="/admin/products">
+              مدیریت کالاها
+            </AppLink>
             <AppLink className="admin-dashboard-link" href="/admin/reviews">
               مدیریت نظرها
             </AppLink>
@@ -2679,22 +2776,24 @@ function AdminCatalogPage({ user }: { user: AuthUser | null }) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState(false);
+  const [categoryPending, setCategoryPending] = useState(false);
+  const [categoryName, setCategoryName] = useState("");
+  const [categoryImage, setCategoryImage] = useState<File | null>(null);
+  const [categoryIsActive, setCategoryIsActive] = useState(true);
+  const categoryImageInputRef = useRef<HTMLInputElement>(null);
   const [images, setImages] = useState<File[]>([]);
   const [imageAltText, setImageAltText] = useState("");
   const [product, setProduct] = useState({
     category: "",
     product_type: "laptop",
     name: "",
-    slug: "",
-    sku: "",
     brand: "",
     short_description: "",
     description: "",
     price: "",
-    compare_at_price: "",
+    discount_percent: "0",
     stock_quantity: "0",
     status: "draft",
-    is_featured: false,
     processor: "",
     ram_gb: "",
     storage_gb: "",
@@ -2728,14 +2827,56 @@ function AdminCatalogPage({ user }: { user: AuthUser | null }) {
     setProduct((current) => ({ ...current, [field]: value }));
   }
 
+  async function createCategory(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = categoryName.trim();
+    if (!name) return;
+
+    setCategoryPending(true);
+    setMessage("");
+    try {
+      const formData = new FormData();
+      formData.set("name", name);
+      formData.set("is_active", String(categoryIsActive));
+      if (categoryImage) formData.set("image", categoryImage);
+      const response = await fetchAuthenticated(
+        "/api/v1/catalog/admin/categories/",
+        {
+          method: "POST",
+          body: formData,
+        },
+      );
+      if (!response.ok) throw new Error(await getError(response));
+
+      const category = (await response.json()) as Category;
+      setCategories((current) => [...current, category]);
+      setProduct((current) => ({ ...current, category: String(category.id) }));
+      setCategoryName("");
+      setCategoryImage(null);
+      setCategoryIsActive(true);
+      if (categoryImageInputRef.current)
+        categoryImageInputRef.current.value = "";
+      setMessage("دسته‌بندی جدید ایجاد و برای کالای در حال ثبت انتخاب شد.");
+    } catch (reason) {
+      setMessage(
+        reason instanceof Error
+          ? reason.message
+          : "ایجاد دسته‌بندی ناموفق بود.",
+      );
+    } finally {
+      setCategoryPending(false);
+    }
+  }
+
   async function createProduct(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const price = Number(product.price);
-    const compareAtPrice = Number(product.compare_at_price);
-    if (product.compare_at_price && compareAtPrice <= price) {
-      setMessage(
-        "قیمت پیش از تخفیف باید از قیمت فروش بزرگ‌تر باشد؛ اگر تخفیف ندارید این فیلد را خالی بگذارید.",
-      );
+    const discountPercent = Number(product.discount_percent);
+    if (
+      !Number.isInteger(discountPercent) ||
+      discountPercent < 0 ||
+      discountPercent > 99
+    ) {
+      setMessage("درصد تخفیف باید یک عدد صحیح بین صفر تا نود و نه باشد.");
       return;
     }
     setPending(true);
@@ -2745,17 +2886,13 @@ function AdminCatalogPage({ user }: { user: AuthUser | null }) {
       formData.set("category", product.category);
       formData.set("product_type", product.product_type);
       formData.set("name", product.name);
-      formData.set("slug", product.slug);
-      formData.set("sku", product.sku);
       formData.set("brand", product.brand);
       formData.set("short_description", product.short_description);
       formData.set("description", product.description);
       formData.set("price", product.price);
       formData.set("stock_quantity", product.stock_quantity);
       formData.set("status", product.status);
-      formData.set("is_featured", String(product.is_featured));
-      if (product.compare_at_price)
-        formData.set("compare_at_price", product.compare_at_price);
+      formData.set("discount_percent", product.discount_percent);
       if (product.product_type === "laptop") {
         formData.set("laptop_specification.processor", product.processor);
         formData.set("laptop_specification.ram_gb", product.ram_gb);
@@ -2789,13 +2926,11 @@ function AdminCatalogPage({ user }: { user: AuthUser | null }) {
       setProduct((current) => ({
         ...current,
         name: "",
-        slug: "",
-        sku: "",
         brand: "",
         short_description: "",
         description: "",
         price: "",
-        compare_at_price: "",
+        discount_percent: "0",
         stock_quantity: "0",
         processor: "",
         ram_gb: "",
@@ -2826,6 +2961,46 @@ function AdminCatalogPage({ user }: { user: AuthUser | null }) {
       </div>
       {message && <p className="orders-state error">{message}</p>}
       <div className="admin-catalog-grid">
+        <section className="orders-section admin-category-section">
+          <div className="orders-heading">
+            <div>
+              <h2>دسته‌بندی جدید</h2>
+            </div>
+          </div>
+          <form className="admin-category-form" onSubmit={createCategory}>
+            <label>
+              نام دسته‌بندی
+              <input
+                required
+                maxLength={120}
+                value={categoryName}
+                onChange={(event) => setCategoryName(event.target.value)}
+              />
+            </label>
+            <label>
+              تصویر دسته‌بندی
+              <input
+                ref={categoryImageInputRef}
+                type="file"
+                accept="image/*"
+                onChange={(event) =>
+                  setCategoryImage(event.target.files?.[0] ?? null)
+                }
+              />
+            </label>
+            <label className="admin-checkbox">
+              <input
+                type="checkbox"
+                checked={categoryIsActive}
+                onChange={(event) => setCategoryIsActive(event.target.checked)}
+              />
+              فعال باشد
+            </label>
+            <button type="submit" disabled={categoryPending}>
+              {categoryPending ? "در حال ایجاد..." : "افزودن دسته‌بندی"}
+            </button>
+          </form>
+        </section>
         <section className="orders-section">
           <div className="orders-heading">
             <h2>کالای جدید</h2>
@@ -2837,24 +3012,6 @@ function AdminCatalogPage({ user }: { user: AuthUser | null }) {
                 required
                 value={product.name}
                 onChange={(event) => updateProduct("name", event.target.value)}
-              />
-            </label>
-            <label>
-              شناسهٔ URL
-              <input
-                required
-                value={product.slug}
-                onChange={(event) => updateProduct("slug", event.target.value)}
-                dir="ltr"
-              />
-            </label>
-            <label>
-              کد کالا
-              <input
-                required
-                value={product.sku}
-                onChange={(event) => updateProduct("sku", event.target.value)}
-                dir="ltr"
               />
             </label>
             <label>
@@ -2903,17 +3060,19 @@ function AdminCatalogPage({ user }: { user: AuthUser | null }) {
               />
             </label>
             <label>
-              قیمت پیش از تخفیف
+              درصد تخفیف
               <input
                 type="number"
-                min={product.price ? String(Number(product.price) + 1) : "0"}
-                value={product.compare_at_price}
+                min="0"
+                max="99"
+                step="1"
+                value={product.discount_percent}
                 onChange={(event) =>
-                  updateProduct("compare_at_price", event.target.value)
+                  updateProduct("discount_percent", event.target.value)
                 }
               />
               <small className="field-hint">
-                فقط برای تخفیف وارد شود و باید از قیمت فروش بیشتر باشد.
+                قیمت پیش از تخفیف به‌صورت خودکار از قیمت فروش محاسبه می‌شود.
               </small>
             </label>
             <label>
@@ -2939,19 +3098,6 @@ function AdminCatalogPage({ user }: { user: AuthUser | null }) {
                 <option value="draft">پیش‌نویس</option>
                 <option value="published">منتشرشده</option>
               </select>
-            </label>
-            <label className="admin-checkbox">
-              <input
-                type="checkbox"
-                checked={product.is_featured}
-                onChange={(event) =>
-                  setProduct((current) => ({
-                    ...current,
-                    is_featured: event.target.checked,
-                  }))
-                }
-              />
-              کالای ویژه
             </label>
             {product.product_type === "laptop" ? (
               <>
@@ -3125,6 +3271,342 @@ function AdminCatalogPage({ user }: { user: AuthUser | null }) {
           </form>
         </section>
       </div>
+    </main>
+  );
+}
+
+function AdminProductsPage({ user }: { user: AuthUser | null }) {
+  const [products, setProducts] = useState<AdminProduct[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [query, setQuery] = useState("");
+  const [selectedProduct, setSelectedProduct] = useState<AdminProduct | null>(
+    null,
+  );
+  const [message, setMessage] = useState("");
+  const [pending, setPending] = useState(false);
+
+  async function loadProducts(search = query) {
+    const params = new URLSearchParams();
+    if (search.trim()) params.set("q", search.trim());
+    const response = await fetchAuthenticated(
+      `/api/v1/catalog/admin/products/list/${params.size ? `?${params}` : ""}`,
+    );
+    if (!response.ok) throw new Error(await getError(response));
+    setProducts((await response.json()) as AdminProduct[]);
+  }
+
+  useEffect(() => {
+    if (user?.role !== "admin") return;
+    Promise.all([
+      loadProducts(""),
+      fetch(`${apiBaseUrl}/api/v1/catalog/categories/`).then(
+        async (response) => {
+          if (!response.ok) throw new Error(await getError(response));
+          return response.json() as Promise<Category[]>;
+        },
+      ),
+    ])
+      .then(([, categoryData]) => setCategories(categoryData))
+      .catch((reason) =>
+        setMessage(
+          reason instanceof Error
+            ? reason.message
+            : "دریافت کالاها ناموفق بود.",
+        ),
+      );
+  }, [user?.id, user?.role]);
+
+  if (user?.role !== "admin")
+    return (
+      <PageState title="دسترسی ندارید" text="این بخش فقط برای مدیران است." />
+    );
+
+  async function searchProducts(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending(true);
+    setMessage("");
+    try {
+      await loadProducts();
+      setSelectedProduct(null);
+    } catch (reason) {
+      setMessage(
+        reason instanceof Error ? reason.message : "جست‌وجوی کالا ناموفق بود.",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function saveProduct(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedProduct) return;
+    setPending(true);
+    setMessage("");
+    try {
+      const response = await fetchAuthenticated(
+        `/api/v1/catalog/admin/products/${encodeURIComponent(selectedProduct.slug)}/`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            category: selectedProduct.category,
+            name: selectedProduct.name,
+            brand: selectedProduct.brand,
+            short_description: selectedProduct.short_description,
+            price: selectedProduct.price,
+            stock_quantity: selectedProduct.stock_quantity,
+            status: selectedProduct.status,
+          }),
+        },
+      );
+      if (!response.ok) throw new Error(await getError(response));
+      const updated = (await response.json()) as Partial<AdminProduct>;
+      const categoryName =
+        categories.find((category) => category.id === selectedProduct.category)
+          ?.name ?? selectedProduct.category_name;
+      const nextProduct = {
+        ...selectedProduct,
+        ...updated,
+        category_name: categoryName,
+      } as AdminProduct;
+      setSelectedProduct(nextProduct);
+      setProducts((items) =>
+        items.map((item) => (item.id === nextProduct.id ? nextProduct : item)),
+      );
+      setMessage("تغییرات کالا ذخیره شد.");
+    } catch (reason) {
+      setMessage(
+        reason instanceof Error ? reason.message : "ویرایش کالا ناموفق بود.",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function deleteProduct(product: AdminProduct) {
+    if (!confirm(`کالای «${product.name}» حذف شود؟`)) return;
+    setPending(true);
+    setMessage("");
+    try {
+      const response = await fetchAuthenticated(
+        `/api/v1/catalog/admin/products/${encodeURIComponent(product.slug)}/`,
+        { method: "DELETE" },
+      );
+      if (!response.ok) throw new Error(await getError(response));
+      setProducts((items) => items.filter((item) => item.id !== product.id));
+      if (selectedProduct?.id === product.id) setSelectedProduct(null);
+      setMessage("کالا حذف شد.");
+    } catch (reason) {
+      setMessage(
+        reason instanceof Error ? reason.message : "حذف کالا ناموفق بود.",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <main className="profile-page admin-catalog-page">
+      <div className="page-heading">
+        <p className="eyebrow">مدیریت کاتالوگ</p>
+        <h1>مدیریت کالاها</h1>
+        <p>کالاها را جست‌وجو، ویرایش یا حذف کن.</p>
+      </div>
+      {message && <p className="orders-state error">{message}</p>}
+      <section className="orders-section admin-products-section">
+        <form className="admin-product-search" onSubmit={searchProducts}>
+          <label>
+            جست‌وجوی کالا
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="نام، برند، کد کالا یا توضیح کوتاه"
+            />
+          </label>
+          <button
+            className="button button-primary"
+            type="submit"
+            disabled={pending}
+          >
+            جست‌وجو
+          </button>
+        </form>
+        <div className="admin-products-list">
+          {products.map((product) => (
+            <article className="admin-product-row" key={product.id}>
+              {product.primary_image ? (
+                <img
+                  src={resolveMediaUrl(product.primary_image) ?? undefined}
+                  alt={product.name}
+                />
+              ) : (
+                <div className="admin-product-image-placeholder">کالا</div>
+              )}
+              <div>
+                <strong>{product.name}</strong>
+                <span>{product.brand || product.category_name}</span>
+                <small>{formatPrice(product.price)} تومان</small>
+              </div>
+              <div className="admin-product-row-meta">
+                <span>{product.stock_quantity} عدد موجود</span>
+                <span>
+                  {product.status === "published" ? "منتشرشده" : "پیش‌نویس"}
+                </span>
+              </div>
+              <div className="admin-product-row-actions">
+                <button
+                  type="button"
+                  onClick={() => setSelectedProduct(product)}
+                >
+                  ویرایش
+                </button>
+                <button
+                  className="danger"
+                  type="button"
+                  disabled={pending}
+                  onClick={() => void deleteProduct(product)}
+                >
+                  حذف
+                </button>
+              </div>
+            </article>
+          ))}
+          {!products.length && <p className="orders-state">کالایی پیدا نشد.</p>}
+        </div>
+      </section>
+      {selectedProduct && (
+        <section className="orders-section admin-product-edit-section">
+          <div className="orders-heading">
+            <h2>ویرایش کالا</h2>
+            <button type="button" onClick={() => setSelectedProduct(null)}>
+              بستن
+            </button>
+          </div>
+          <form className="admin-product-form" onSubmit={saveProduct}>
+            <label>
+              نام کالا
+              <input
+                required
+                value={selectedProduct.name}
+                onChange={(event) =>
+                  setSelectedProduct((current) =>
+                    current
+                      ? { ...current, name: event.target.value }
+                      : current,
+                  )
+                }
+              />
+            </label>
+            <label>
+              دسته‌بندی
+              <select
+                value={selectedProduct.category}
+                onChange={(event) =>
+                  setSelectedProduct((current) =>
+                    current
+                      ? { ...current, category: Number(event.target.value) }
+                      : current,
+                  )
+                }
+              >
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              برند
+              <input
+                value={selectedProduct.brand}
+                onChange={(event) =>
+                  setSelectedProduct((current) =>
+                    current
+                      ? { ...current, brand: event.target.value }
+                      : current,
+                  )
+                }
+              />
+            </label>
+            <label>
+              قیمت
+              <input
+                required
+                min="0"
+                type="number"
+                value={selectedProduct.price}
+                onChange={(event) =>
+                  setSelectedProduct((current) =>
+                    current
+                      ? { ...current, price: event.target.value }
+                      : current,
+                  )
+                }
+              />
+            </label>
+            <label>
+              موجودی
+              <input
+                required
+                min="0"
+                type="number"
+                value={selectedProduct.stock_quantity}
+                onChange={(event) =>
+                  setSelectedProduct((current) =>
+                    current
+                      ? {
+                          ...current,
+                          stock_quantity: Number(event.target.value),
+                        }
+                      : current,
+                  )
+                }
+              />
+            </label>
+            <label>
+              وضعیت
+              <select
+                value={selectedProduct.status}
+                onChange={(event) =>
+                  setSelectedProduct((current) =>
+                    current
+                      ? {
+                          ...current,
+                          status: event.target.value as AdminProduct["status"],
+                        }
+                      : current,
+                  )
+                }
+              >
+                <option value="draft">پیش‌نویس</option>
+                <option value="published">منتشرشده</option>
+                <option value="archived">بایگانی‌شده</option>
+              </select>
+            </label>
+            <label className="wide">
+              توضیح کوتاه
+              <textarea
+                value={selectedProduct.short_description}
+                onChange={(event) =>
+                  setSelectedProduct((current) =>
+                    current
+                      ? { ...current, short_description: event.target.value }
+                      : current,
+                  )
+                }
+              />
+            </label>
+            <button
+              className="button button-primary"
+              type="submit"
+              disabled={pending}
+            >
+              ذخیرهٔ تغییرات
+            </button>
+          </form>
+        </section>
+      )}
     </main>
   );
 }
@@ -4765,6 +5247,8 @@ function App() {
       <AdminOrdersPage user={user} />
     ) : route.name === "admin-catalog" ? (
       <AdminCatalogPage user={user} />
+    ) : route.name === "admin-products" ? (
+      <AdminProductsPage user={user} />
     ) : route.name === "admin-reviews" ? (
       <AdminReviewsPage user={user} />
     ) : route.name === "chat" ? (

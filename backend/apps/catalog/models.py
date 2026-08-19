@@ -18,6 +18,7 @@ class Category(TimeStampedModel):
     name = models.CharField(max_length=120)
     slug = models.SlugField(unique=True)
     description = models.TextField(blank=True)
+    image = models.ImageField(upload_to="categories/%Y/%m/", blank=True)
     image_url = models.URLField(blank=True)
     is_active = models.BooleanField(default=True)
     display_order = models.PositiveSmallIntegerField(default=0)
