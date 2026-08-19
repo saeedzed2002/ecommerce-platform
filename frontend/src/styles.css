@@ -4436,6 +4436,105 @@ body {
   }
 }
 
+/* Technology-focused home hero. */
+.hero {
+  max-width: 1260px;
+  min-height: 540px;
+  margin-top: 22px;
+  padding: 42px 52px;
+  overflow: hidden;
+  border: 1px solid #dce7df;
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 14% 16%, rgb(44 130 103 / 13%), transparent 30%),
+    linear-gradient(118deg, #f8fbf8 15%, #f1f7f2 100%);
+}
+
+.hero h1 {
+  max-width: 600px;
+  color: #16251d;
+  font-size: clamp(2.3rem, 4.7vw, 4.05rem);
+  letter-spacing: -0.07em;
+}
+
+.hero h1 em {
+  color: #16724d;
+  font-family: Vazirmatn, Tahoma, sans-serif;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.hero-description {
+  max-width: 490px;
+  color: #58675d;
+}
+
+.hero-visual {
+  min-height: 430px;
+}
+
+.hero-orbit.orbit-one {
+  width: 420px;
+  height: 420px;
+  background: #d5e8da;
+  opacity: 0.72;
+}
+
+.hero-orbit.orbit-two {
+  width: 490px;
+  height: 490px;
+  border-color: #bcd6c2;
+}
+
+.hero-image-wrap {
+  width: min(500px, 100%);
+  height: 410px;
+  border-radius: 20px;
+  box-shadow: 0 28px 62px rgb(25 62 44 / 26%);
+}
+
+.hero-image-wrap::after {
+  background: linear-gradient(120deg, transparent 55%, rgb(5 25 18 / 42%));
+}
+
+.hero-image-wrap img {
+  object-position: 31% center;
+}
+
+.member-banner {
+  background: linear-gradient(118deg, #143c2b, #285b42);
+}
+
+@media (max-width: 760px) {
+  .hero {
+    margin: 12px 14px 0;
+    padding: 38px 24px 28px;
+    border-radius: 20px;
+  }
+
+  .hero-visual {
+    min-height: 350px;
+  }
+
+  .hero-image-wrap {
+    height: 330px;
+  }
+}
+
+@media (max-width: 480px) {
+  .hero {
+    padding: 31px 19px 24px;
+  }
+
+  .hero h1 {
+    font-size: 2.15rem;
+  }
+
+  .hero-image-wrap {
+    height: 280px;
+  }
+}
+
 @media (max-width: 900px) {
   .profile-page {
     padding-right: 20px;

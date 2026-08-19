@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import { createRoot } from "react-dom/client";
+import heroTechImage from "./assets/hero-tech-v1.png";
 import "./styles.css";
 
 type IconName =
@@ -894,22 +895,25 @@ function HomePage({ categories }: { categories: Category[] }) {
     <main>
       <section className="hero">
         <div className="hero-copy">
-          <p className="eyebrow">انتخاب‌های تازه، هر روز</p>
+          <p className="eyebrow">فروشگاه تخصصی لپ‌تاپ و موبایل</p>
           <h1>
-            هر آنچه دوست داری،
+            تکنولوژیِ مناسبِ تو،
             <br />
             <em>همین‌جا پیدا کن.</em>
           </h1>
           <p className="hero-description">
-            از برندهای محبوب تا کشف‌های تازه؛ خریدی مطمئن و ساده، برای لحظه‌های
-            مهم زندگی.
+            لپ‌تاپ و موبایل را بر اساس نیاز واقعی‌ات انتخاب کن؛ از کار و دانشگاه
+            تا بازی و تولید محتوا، با مشخصات شفاف و خرید مطمئن.
           </p>
           <div className="hero-actions">
-            <AppLink className="button button-primary" href="/products">
-              مشاهده‌ی محصولات <Icon name="arrow" size={18} />
+            <AppLink
+              className="button button-primary"
+              href="/products?type=laptop"
+            >
+              خرید لپ‌تاپ <Icon name="arrow" size={18} />
             </AppLink>
-            <AppLink className="text-link" href="/products">
-              مشاهده‌ی دسته‌بندی‌ها
+            <AppLink className="text-link" href="/products?type=mobile">
+              مشاهدهٔ موبایل‌ها
             </AppLink>
           </div>
         </div>
@@ -917,10 +921,7 @@ function HomePage({ categories }: { categories: Category[] }) {
           <div className="hero-orbit orbit-one" />
           <div className="hero-orbit orbit-two" />
           <div className="hero-image-wrap">
-            <img
-              src="https://images.unsplash.com/photo-1492707892479-7bc8d5a4ee93?auto=format&fit=crop&w=1100&q=85"
-              alt="مجموعه‌ای از محصولات منتخب"
-            />
+            <img src={heroTechImage} alt="لپ‌تاپ و گوشی هوشمند" />
           </div>
         </div>
       </section>
@@ -950,8 +951,8 @@ function HomePage({ categories }: { categories: Category[] }) {
       <section className="section">
         <div className="section-heading">
           <div>
-            <p className="eyebrow">یک انتخاب برای هر سلیقه</p>
-            <h2>دسته‌بندی‌های محبوب</h2>
+            <p className="eyebrow">از ابزار کار تا همراه روزانه</p>
+            <h2>دسته‌بندی‌های فناوری</h2>
           </div>
           <AppLink className="text-link" href="/products">
             مشاهده همه <Icon name="arrow" size={17} />
@@ -988,9 +989,9 @@ function HomePage({ categories }: { categories: Category[] }) {
       </section>
       <section className="member-banner" id="offers">
         <div>
-          <p className="eyebrow">پیشنهاد ویژه‌ی اعضا</p>
-          <h2>به جمع نوکسا کلاب بپیوند.</h2>
-          <p>از تخفیف‌های شخصی‌سازی‌شده و خبرهای تازه زودتر باخبر شو.</p>
+          <p className="eyebrow">راهنمای انتخاب هوشمند</p>
+          <h2>لپ‌تاپ و موبایل، بدون انتخاب اشتباه.</h2>
+          <p>مشخصات دقیق، مقایسهٔ ساده و پشتیبانی برای انتخاب مطمئن‌تر.</p>
         </div>
         <div className="banner-shape">
           N<span>+</span>
