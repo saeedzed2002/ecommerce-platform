@@ -164,6 +164,11 @@ type Order = {
   order_code: string;
   status: string;
   subtotal: string;
+  discount_amount: string;
+  shipping_cost: string;
+  tax_amount: string;
+  total: string;
+  coupon_code: string;
   expires_at: string | null;
   created_at: string;
   items: OrderItem[];
@@ -186,6 +191,13 @@ type AdminOrdersResponse = Omit<OrdersResponse, "results"> & {
 type OrderSummary = {
   total: number;
   by_status: Record<string, number>;
+  revenue: string;
+  completed_orders: number;
+  best_sellers: {
+    product_sku: string;
+    product_name: string;
+    quantity: number;
+  }[];
 };
 type ConversationSummary = {
   total: number;
@@ -1545,6 +1557,7 @@ function CheckoutPage({
   const [selected, setSelected] = useState<number | null>(null);
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState(false);
+  const [couponCode, setCouponCode] = useState("");
   const [paymentOrder, setPaymentOrder] = useState<Order | null>(null);
   const [form, setForm] = useState({
     full_name: "",
@@ -1606,7 +1619,7 @@ function CheckoutPage({
       const response = await fetchAuthenticated("/api/v1/orders/checkout/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ address_id: selected }),
+        body: JSON.stringify({ address_id: selected, coupon_code: couponCode }),
       });
       if (!response.ok) throw new Error(await getError(response));
       order = (await response.json()) as Order;
@@ -1759,11 +1772,44 @@ function CheckoutPage({
               {cart ? `${formatPrice(cart.subtotal)} تومان` : "—"}
             </strong>
           </div>
+          <label>
+            کد تخفیف
+            <input
+              value={couponCode}
+              maxLength={40}
+              onChange={(event) =>
+                setCouponCode(event.target.value.toUpperCase())
+              }
+              placeholder="اختیاری"
+            />
+          </label>
           <hr />
+          {paymentOrder && (
+            <>
+              <div>
+                <span>تخفیف</span>
+                <strong>
+                  {formatPrice(paymentOrder.discount_amount)} تومان
+                </strong>
+              </div>
+              <div>
+                <span>هزینه ارسال</span>
+                <strong>{formatPrice(paymentOrder.shipping_cost)} تومان</strong>
+              </div>
+              <div>
+                <span>مالیات</span>
+                <strong>{formatPrice(paymentOrder.tax_amount)} تومان</strong>
+              </div>
+            </>
+          )}
           <div className="cart-total">
             <span>مبلغ سفارش</span>
             <strong>
-              {cart ? `${formatPrice(cart.subtotal)} تومان` : "—"}
+              {paymentOrder
+                ? `${formatPrice(paymentOrder.total)} تومان`
+                : cart
+                  ? `${formatPrice(cart.subtotal)} تومان`
+                  : "—"}
             </strong>
           </div>
           <button
@@ -2370,7 +2416,7 @@ function ProfilePage({
                           </div>
                           <div>
                             <dt>مبلغ نهایی</dt>
-                            <dd>{formatPrice(order.subtotal)} تومان</dd>
+                            <dd>{formatPrice(order.total)} تومان</dd>
                           </div>
                           <div>
                             <dt>تعداد آیتم‌ها</dt>
@@ -2551,7 +2597,7 @@ function OrderDetailPage({
         </div>
         <div className="order-detail-total">
           <span>{paidOrder ? "مبلغ پرداخت‌شده" : "مبلغ قابل پرداخت"}</span>
-          <strong>{formatPrice(order.subtotal)} تومان</strong>
+          <strong>{formatPrice(order.total)} تومان</strong>
           <small>{orderItemCount(order)} قلم کالا</small>
         </div>
       </section>
@@ -2707,6 +2753,14 @@ function AdminDashboardPage({ user }: { user: AuthUser | null }) {
             </div>
             <dl className="admin-overview-metrics">
               <div>
+                <dt>درآمد ثبت‌شده</dt>
+                <dd>{formatPrice(orders.revenue)} تومان</dd>
+              </div>
+              <div>
+                <dt>سفارش تکمیل‌شده</dt>
+                <dd>{orders.completed_orders}</dd>
+              </div>
+              <div>
                 <dt>در انتظار پرداخت</dt>
                 <dd>{orders.by_status.pending ?? 0}</dd>
               </div>
@@ -2723,6 +2777,16 @@ function AdminDashboardPage({ user }: { user: AuthUser | null }) {
                 <dd>{orders.by_status.shipped ?? 0}</dd>
               </div>
             </dl>
+            {orders.best_sellers.length > 0 && (
+              <div className="admin-overview-metrics">
+                <strong>پرفروش‌ها</strong>
+                {orders.best_sellers.map((product) => (
+                  <span key={product.product_sku}>
+                    {product.product_name} — {product.quantity} عدد
+                  </span>
+                ))}
+              </div>
+            )}
             <AppLink className="admin-dashboard-link" href="/admin/orders">
               مدیریت سفارش‌ها
             </AppLink>
@@ -2806,7 +2870,7 @@ function AdminCatalogPage({ user }: { user: AuthUser | null }) {
 
   useEffect(() => {
     if (user?.role !== "admin") return;
-    fetch(`${apiBaseUrl}/api/v1/catalog/categories/`)
+    fetchAuthenticated("/api/v1/catalog/admin/categories/")
       .then((response) => (response.ok ? response.json() : Promise.reject()))
       .then((data: Category[]) => {
         setCategories(data);
@@ -3299,7 +3363,7 @@ function AdminProductsPage({ user }: { user: AuthUser | null }) {
     if (user?.role !== "admin") return;
     Promise.all([
       loadProducts(""),
-      fetch(`${apiBaseUrl}/api/v1/catalog/categories/`).then(
+      fetchAuthenticated("/api/v1/catalog/admin/categories/").then(
         async (response) => {
           if (!response.ok) throw new Error(await getError(response));
           return response.json() as Promise<Category[]>;
@@ -3945,7 +4009,7 @@ function AdminOrdersPage({ user }: { user: AuthUser | null }) {
                     </div>
                     <div>
                       <dt>مبلغ</dt>
-                      <dd>{formatPrice(order.subtotal)} تومان</dd>
+                      <dd>{formatPrice(order.total)} تومان</dd>
                     </div>
                   </dl>
                   <div className="admin-order-footer">

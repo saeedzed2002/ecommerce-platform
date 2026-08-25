@@ -10,11 +10,43 @@ from rest_framework.exceptions import ValidationError
 from apps.cart.models import CartItem
 from apps.catalog.models import Product
 
-from .models import Address, Order, OrderItem, OrderStatusEvent, PaymentAttempt
+from .models import Address, Coupon, Order, OrderItem, OrderStatusEvent, PaymentAttempt
+
+
+def _calculate_shipping(subtotal: Decimal) -> Decimal:
+    threshold = Decimal(settings.SHIPPING_FREE_THRESHOLD)
+    if threshold and subtotal >= threshold:
+        return Decimal()
+    return Decimal(settings.SHIPPING_FLAT_RATE)
+
+
+def _redeem_coupon(code: str, subtotal: Decimal) -> tuple[Coupon, Decimal]:
+    coupon = (
+        Coupon.objects.select_for_update().filter(code__iexact=code.strip()).first()
+    )
+    now = timezone.now()
+    if (
+        coupon is None
+        or not coupon.is_active
+        or (coupon.starts_at and coupon.starts_at > now)
+        or (coupon.expires_at and coupon.expires_at <= now)
+        or (
+            coupon.max_redemptions is not None
+            and coupon.redemption_count >= coupon.max_redemptions
+        )
+    ):
+        raise ValidationError({"coupon_code": "Coupon is invalid or unavailable."})
+    if subtotal < coupon.minimum_subtotal:
+        raise ValidationError({"coupon_code": "Coupon minimum subtotal is not met."})
+    if coupon.discount_type == Coupon.DiscountType.PERCENT:
+        discount = (subtotal * coupon.amount / Decimal(100)).quantize(Decimal(1))
+    else:
+        discount = coupon.amount
+    return coupon, min(discount, subtotal)
 
 
 @transaction.atomic
-def create_order_from_cart(*, user, address_id: int) -> Order:
+def create_order_from_cart(*, user, address_id: int, coupon_code: str = "") -> Order:
     get_user_model().objects.select_for_update().get(pk=user.pk)
     pending_order = (
         Order.objects.select_for_update()
@@ -58,9 +90,24 @@ def create_order_from_cart(*, user, address_id: int) -> Order:
             raise ValidationError({"detail": f"Insufficient stock for {product.name}."})
         subtotal += product.price * cart_item.quantity
         order_items.append((product, cart_item.quantity))
+    coupon = None
+    discount_amount = Decimal()
+    if coupon_code:
+        coupon, discount_amount = _redeem_coupon(coupon_code, subtotal)
+    discounted_subtotal = subtotal - discount_amount
+    shipping_cost = _calculate_shipping(discounted_subtotal)
+    tax_amount = (
+        discounted_subtotal * Decimal(settings.TAX_RATE_PERCENT) / Decimal(100)
+    ).quantize(Decimal(1))
+    total = discounted_subtotal + shipping_cost + tax_amount
     order = Order.objects.create(
         user=user,
         subtotal=subtotal,
+        discount_amount=discount_amount,
+        shipping_cost=shipping_cost,
+        tax_amount=tax_amount,
+        total=total,
+        coupon_code=coupon.code if coupon else "",
         expires_at=timezone.now()
         + timedelta(minutes=settings.ORDER_PAYMENT_RESERVATION_MINUTES),
         shipping_full_name=address.full_name,
@@ -70,6 +117,9 @@ def create_order_from_cart(*, user, address_id: int) -> Order:
         shipping_address_line=address.address_line,
         shipping_postal_code=address.postal_code,
     )
+    if coupon:
+        coupon.redemption_count += 1
+        coupon.save(update_fields=["redemption_count", "updated_at"])
     OrderStatusEvent.objects.create(order=order, to_status=Order.Status.PENDING)
     OrderItem.objects.bulk_create(
         [
@@ -132,8 +182,16 @@ def transition_order_status(*, order_number, target_status: str, changed_by) -> 
             status=PaymentAttempt.Status.FAILED,
             failure_reason="Cancelled by administrator.",
         )
+    if target_status == Order.Status.SHIPPED:
+        if not order.carrier or not order.tracking_number:
+            raise ValidationError(
+                {
+                    "tracking_number": "Carrier and tracking number are required before shipping."
+                }
+            )
+        order.shipped_at = timezone.now()
     order.status = target_status
-    order.save(update_fields=["status", "updated_at"])
+    order.save(update_fields=["status", "shipped_at", "updated_at"])
     OrderStatusEvent.objects.create(
         order=order,
         from_status=previous_status,

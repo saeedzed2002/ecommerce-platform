@@ -39,6 +39,7 @@ class Order(TimeStampedModel):
         PROCESSING = "processing", "Processing"
         SHIPPED = "shipped", "Shipped"
         EXPIRED = "expired", "Expired"
+        PAYMENT_REVIEW = "payment_review", "Payment reconciliation required"
         CANCELLED = "cancelled", "Cancelled"
 
     user = models.ForeignKey(
@@ -53,18 +54,48 @@ class Order(TimeStampedModel):
     )
     expires_at = models.DateTimeField(null=True, blank=True)
     subtotal = models.DecimalField(max_digits=12, decimal_places=0)
+    discount_amount = models.DecimalField(max_digits=12, decimal_places=0, default=0)
+    shipping_cost = models.DecimalField(max_digits=12, decimal_places=0, default=0)
+    tax_amount = models.DecimalField(max_digits=12, decimal_places=0, default=0)
+    total = models.DecimalField(max_digits=12, decimal_places=0, default=0)
+    coupon_code = models.CharField(max_length=40, blank=True)
     shipping_full_name = models.CharField(max_length=180)
     shipping_phone = models.CharField(max_length=15)
     shipping_province = models.CharField(max_length=80)
     shipping_city = models.CharField(max_length=80)
     shipping_address_line = models.TextField()
     shipping_postal_code = models.CharField(max_length=20)
+    carrier = models.CharField(max_length=80, blank=True)
+    tracking_number = models.CharField(max_length=120, blank=True)
+    shipped_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ("-created_at",)
 
     def __str__(self) -> str:
         return f"Order {self.order_code}"
+
+
+class Coupon(TimeStampedModel):
+    class DiscountType(models.TextChoices):
+        PERCENT = "percent", "Percent"
+        FIXED = "fixed", "Fixed amount"
+
+    code = models.CharField(max_length=40, unique=True)
+    discount_type = models.CharField(max_length=12, choices=DiscountType.choices)
+    amount = models.DecimalField(max_digits=12, decimal_places=0)
+    minimum_subtotal = models.DecimalField(max_digits=12, decimal_places=0, default=0)
+    starts_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    max_redemptions = models.PositiveIntegerField(null=True, blank=True)
+    redemption_count = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ("code",)
+
+    def __str__(self) -> str:
+        return self.code
 
 
 class PaymentAttempt(TimeStampedModel):

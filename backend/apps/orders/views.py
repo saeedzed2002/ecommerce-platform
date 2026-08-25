@@ -1,15 +1,21 @@
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Count, DecimalField, Q, Sum
+from django.db.models.functions import Coalesce
 from django.http import HttpResponseRedirect
 from rest_framework import status
 from rest_framework.exceptions import NotFound, ValidationError
-from rest_framework.generics import ListAPIView, ListCreateAPIView, RetrieveAPIView
+from rest_framework.generics import (
+    ListAPIView,
+    ListCreateAPIView,
+    RetrieveAPIView,
+    RetrieveUpdateAPIView,
+)
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Address, Order
+from .models import Address, Coupon, Order, OrderItem
 from .payments import (
     payment_result_url,
     start_zarinpal_payment,
@@ -20,6 +26,7 @@ from .serializers import (
     AddressSerializer,
     AdminOrderSerializer,
     CheckoutSerializer,
+    CouponSerializer,
     OrderDetailSerializer,
     OrderSerializer,
     OrderStatusUpdateSerializer,
@@ -118,6 +125,19 @@ class AdminOrderListAPIView(ListAPIView):
         return queryset
 
 
+class AdminCouponListCreateAPIView(ListCreateAPIView):
+    permission_classes = (IsPlatformAdmin,)
+    serializer_class = CouponSerializer
+    queryset = Coupon.objects.all()
+    pagination_class = None
+
+
+class AdminCouponDetailAPIView(RetrieveUpdateAPIView):
+    permission_classes = (IsPlatformAdmin,)
+    serializer_class = CouponSerializer
+    queryset = Coupon.objects.all()
+
+
 class AdminOrderSummaryAPIView(APIView):
     permission_classes = (IsPlatformAdmin,)
 
@@ -125,7 +145,31 @@ class AdminOrderSummaryAPIView(APIView):
         by_status = {status: 0 for status, _ in Order.Status.choices}
         for item in Order.objects.values("status").annotate(count=Count("id")):
             by_status[item["status"]] = item["count"]
-        return Response({"total": sum(by_status.values()), "by_status": by_status})
+        completed = Order.objects.filter(
+            status__in=(
+                Order.Status.PAID,
+                Order.Status.PROCESSING,
+                Order.Status.SHIPPED,
+            )
+        )
+        revenue = completed.aggregate(
+            total=Coalesce(Sum("total"), 0, output_field=DecimalField())
+        )["total"]
+        best_sellers = (
+            OrderItem.objects.filter(order__in=completed)
+            .values("product_sku", "product_name")
+            .annotate(quantity=Sum("quantity"))
+            .order_by("-quantity", "product_name")[:5]
+        )
+        return Response(
+            {
+                "total": sum(by_status.values()),
+                "by_status": by_status,
+                "revenue": revenue,
+                "completed_orders": completed.count(),
+                "best_sellers": list(best_sellers),
+            }
+        )
 
 
 class AdminOrderStatusAPIView(APIView):
@@ -134,6 +178,17 @@ class AdminOrderStatusAPIView(APIView):
     def patch(self, request, order_number):
         serializer = OrderStatusUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        order = Order.objects.filter(number=order_number).first()
+        if order is None:
+            raise NotFound("Order not found.")
+        for field in ("carrier", "tracking_number"):
+            if field in serializer.validated_data:
+                setattr(order, field, serializer.validated_data[field])
+        if (
+            "carrier" in serializer.validated_data
+            or "tracking_number" in serializer.validated_data
+        ):
+            order.save(update_fields=["carrier", "tracking_number", "updated_at"])
         order = transition_order_status(
             order_number=order_number,
             target_status=serializer.validated_data["status"],

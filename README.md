@@ -14,7 +14,7 @@ The catalog, accounts, cart, and checkout foundations are merged into `main`.
 - Cart and checkout: authenticated carts, delivery addresses, transactional stock reduction, price snapshots, and pending orders.
 - Quality: backend linting, formatting checks, tests, Django system checks, and frontend builds run in CI.
 
-The project is still pre-release (`v0.1.0`). Checkout reserves stock for fifteen minutes, starts a Zarinpal sandbox payment, verifies the callback, and restores stock for expired orders. Fulfillment, cancellation/refunds, and chat are not implemented yet.
+The project is still pre-release (`v0.1.0`). Checkout reserves stock for fifteen minutes, snapshots subtotal, discount, shipping, tax, and total, starts a Zarinpal sandbox payment, verifies the callback, and restores stock for expired orders. Support chat is implemented with authenticated HTTP and WebSocket delivery. Fulfillment stores carrier, tracking number, and shipment timestamp; carrier-label integrations, cancellations/refunds, and payment reconciliation remain operational work.
 
 ## Architecture
 

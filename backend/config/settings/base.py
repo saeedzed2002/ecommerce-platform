@@ -80,7 +80,7 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
-    "DEFAULT_THROTTLE_RATES": {"otp": "10/hour"},
+    "DEFAULT_THROTTLE_RATES": {"otp": "10/hour", "admin_login": "5/hour"},
 }
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
@@ -116,6 +116,9 @@ FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:5173")
 ORDER_PAYMENT_RESERVATION_MINUTES = env.int(
     "ORDER_PAYMENT_RESERVATION_MINUTES", default=15
 )
+SHIPPING_FLAT_RATE = env.int("SHIPPING_FLAT_RATE", default=0)
+SHIPPING_FREE_THRESHOLD = env.int("SHIPPING_FREE_THRESHOLD", default=0)
+TAX_RATE_PERCENT = env.int("TAX_RATE_PERCENT", default=0)
 STORAGES = {
     "default": {
         "BACKEND": "storages.backends.s3.S3Storage",

@@ -130,7 +130,7 @@ def start_zarinpal_payment(*, user, order_number) -> PaymentStart:
         attempt = PaymentAttempt.objects.create(
             order=order,
             provider=PaymentAttempt.Provider.ZARINPAL,
-            amount=int(order.subtotal),
+            amount=int(order.total or order.subtotal),
         )
 
     try:
@@ -192,6 +192,29 @@ def verify_zarinpal_payment(*, authority: str) -> PaymentVerification:
                 order=order, paid=True, reference_id=attempt.reference_id
             )
         if order.status != Order.Status.PENDING:
+            if order.status == Order.Status.EXPIRED:
+                previous_status = order.status
+                order.status = Order.Status.PAYMENT_REVIEW
+                order.save(update_fields=["status", "updated_at"])
+                OrderStatusEvent.objects.create(
+                    order=order,
+                    from_status=previous_status,
+                    to_status=Order.Status.PAYMENT_REVIEW,
+                )
+                attempt.status = PaymentAttempt.Status.VERIFIED
+                attempt.reference_id = verification.reference_id
+                attempt.failure_reason = "Payment received after reservation expiry."
+                attempt.save(
+                    update_fields=[
+                        "status",
+                        "reference_id",
+                        "failure_reason",
+                        "updated_at",
+                    ]
+                )
+                return PaymentVerification(
+                    order=order, paid=False, reference_id=verification.reference_id
+                )
             attempt.status = PaymentAttempt.Status.FAILED
             attempt.failure_reason = "Order is no longer payable."
             attempt.save(update_fields=["status", "failure_reason", "updated_at"])

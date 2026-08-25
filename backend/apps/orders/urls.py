@@ -2,6 +2,8 @@ from django.urls import path
 
 from .views import (
     AddressListCreateAPIView,
+    AdminCouponDetailAPIView,
+    AdminCouponListCreateAPIView,
     AdminOrderListAPIView,
     AdminOrderStatusAPIView,
     AdminOrderSummaryAPIView,
@@ -18,6 +20,16 @@ app_name = "orders"
 urlpatterns = [
     path("addresses/", AddressListCreateAPIView.as_view(), name="address-list"),
     path("admin/", AdminOrderListAPIView.as_view(), name="admin-order-list"),
+    path(
+        "admin/coupons/",
+        AdminCouponListCreateAPIView.as_view(),
+        name="admin-coupon-list",
+    ),
+    path(
+        "admin/coupons/<int:pk>/",
+        AdminCouponDetailAPIView.as_view(),
+        name="admin-coupon-detail",
+    ),
     path(
         "admin/summary/",
         AdminOrderSummaryAPIView.as_view(),

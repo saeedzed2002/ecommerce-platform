@@ -1,12 +1,13 @@
 from decimal import Decimal
 
 import pytest
+from django.test import override_settings
 from rest_framework.test import APIClient
 
 from apps.accounts.models import User
 from apps.cart.models import Cart, CartItem
 from apps.catalog.models import Category, Product
-from apps.orders.models import Address, Order
+from apps.orders.models import Address, Coupon, Order
 
 
 @pytest.fixture
@@ -84,6 +85,35 @@ def test_checkout_reuses_pending_order_without_reserving_stock_twice(
     assert Order.objects.count() == 1
     product.refresh_from_db()
     assert product.stock_quantity == 2
+
+
+@pytest.mark.django_db
+@override_settings(
+    SHIPPING_FLAT_RATE=50000, SHIPPING_FREE_THRESHOLD=600000, TAX_RATE_PERCENT=10
+)
+def test_checkout_snapshots_coupon_shipping_tax_and_total(
+    client: APIClient, user: User, product: Product, address: Address
+) -> None:
+    cart = Cart.objects.create(user=user)
+    CartItem.objects.create(cart=cart, product=product, quantity=2)
+    Coupon.objects.create(
+        code="SAVE10",
+        discount_type=Coupon.DiscountType.PERCENT,
+        amount=10,
+    )
+
+    response = client.post(
+        "/api/v1/orders/checkout/", {"address_id": address.id, "coupon_code": "save10"}
+    )
+
+    assert response.status_code == 201
+    assert response.data["subtotal"] == "500000"
+    assert response.data["discount_amount"] == "50000"
+    assert response.data["shipping_cost"] == "50000"
+    assert response.data["tax_amount"] == "45000"
+    assert response.data["total"] == "545000"
+    assert response.data["coupon_code"] == "SAVE10"
+    assert Coupon.objects.get(code="SAVE10").redemption_count == 1
 
 
 @pytest.mark.django_db

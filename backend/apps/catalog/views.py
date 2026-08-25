@@ -40,9 +40,12 @@ class CategoryListAPIView(ListAPIView):
     pagination_class = None
 
 
-class AdminCategoryCreateAPIView(CreateAPIView):
+class AdminCategoryCreateAPIView(ListCreateAPIView):
     permission_classes = (IsPlatformAdmin,)
     serializer_class = AdminCategorySerializer
+
+    def get_queryset(self):
+        return Category.objects.all()
 
 
 class ProductListAPIView(ListAPIView):
@@ -326,6 +329,15 @@ class AdminProductDetailAPIView(RetrieveUpdateDestroyAPIView):
     serializer_class = AdminProductSerializer
     lookup_field = "slug"
     queryset = Product.objects.select_related("category").prefetch_related("images")
+
+    def perform_destroy(self, instance):
+        if instance.order_items.exists():
+            raise ValidationError(
+                {
+                    "detail": "Products referenced by orders must be archived, not deleted."
+                }
+            )
+        instance.delete()
 
 
 class AdminProductReviewListAPIView(ListAPIView):

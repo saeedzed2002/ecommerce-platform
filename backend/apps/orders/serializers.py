@@ -3,7 +3,7 @@ from rest_framework import serializers
 
 from apps.accounts.phone import normalize_iranian_mobile
 
-from .models import Address, Order, OrderItem, OrderStatusEvent
+from .models import Address, Coupon, Order, OrderItem, OrderStatusEvent
 
 
 class AddressSerializer(serializers.ModelSerializer):
@@ -78,6 +78,11 @@ class OrderSerializer(serializers.ModelSerializer):
             "order_code",
             "status",
             "subtotal",
+            "discount_amount",
+            "shipping_cost",
+            "tax_amount",
+            "total",
+            "coupon_code",
             "expires_at",
             "items",
             "status_events",
@@ -93,6 +98,9 @@ class AdminOrderSerializer(OrderSerializer):
             "customer_phone",
             "shipping_full_name",
             "shipping_city",
+            "carrier",
+            "tracking_number",
+            "shipped_at",
         )
 
 
@@ -107,6 +115,9 @@ class OrderDetailSerializer(OrderSerializer):
             "shipping_city",
             "shipping_address_line",
             "shipping_postal_code",
+            "carrier",
+            "tracking_number",
+            "shipped_at",
             "payment_reference",
         )
 
@@ -124,7 +135,51 @@ class OrderDetailSerializer(OrderSerializer):
 
 class OrderStatusUpdateSerializer(serializers.Serializer):
     status = serializers.ChoiceField(choices=Order.Status.choices)
+    carrier = serializers.CharField(max_length=80, required=False, allow_blank=True)
+    tracking_number = serializers.CharField(
+        max_length=120, required=False, allow_blank=True
+    )
 
 
 class CheckoutSerializer(serializers.Serializer):
     address_id = serializers.IntegerField(min_value=1)
+    coupon_code = serializers.CharField(max_length=40, required=False, allow_blank=True)
+
+
+class CouponSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Coupon
+        fields = (
+            "id",
+            "code",
+            "discount_type",
+            "amount",
+            "minimum_subtotal",
+            "starts_at",
+            "expires_at",
+            "max_redemptions",
+            "redemption_count",
+            "is_active",
+        )
+        read_only_fields = ("id", "redemption_count")
+
+    def validate_code(self, value: str) -> str:
+        return value.strip().upper()
+
+    def validate(self, attrs):
+        if (
+            attrs.get("discount_type", getattr(self.instance, "discount_type", None))
+            == Coupon.DiscountType.PERCENT
+        ):
+            amount = attrs.get("amount", getattr(self.instance, "amount", None))
+            if amount is not None and not 0 < amount <= 100:
+                raise serializers.ValidationError(
+                    {"amount": "Percent coupons must be between 1 and 100."}
+                )
+        starts_at = attrs.get("starts_at", getattr(self.instance, "starts_at", None))
+        expires_at = attrs.get("expires_at", getattr(self.instance, "expires_at", None))
+        if starts_at and expires_at and expires_at <= starts_at:
+            raise serializers.ValidationError(
+                {"expires_at": "Expiry must be after the start time."}
+            )
+        return attrs

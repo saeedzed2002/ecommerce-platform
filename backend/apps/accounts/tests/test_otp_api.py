@@ -156,3 +156,18 @@ def test_admin_login_requires_an_administrator_and_returns_tokens(
     assert response.status_code == 200
     assert response.data["access"]
     assert response.data["user"]["role"] == User.Role.ADMIN
+
+
+@pytest.mark.django_db
+def test_admin_login_is_rate_limited(client: APIClient) -> None:
+    User.objects.create_superuser(phone="989121234567", password="safe-password")
+
+    responses = [
+        client.post(
+            "/api/v1/auth/admin/login/",
+            {"phone": "989121234567", "password": "wrong-password"},
+        )
+        for _ in range(6)
+    ]
+
+    assert responses[-1].status_code == 429

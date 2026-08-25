@@ -26,6 +26,8 @@ class OTPUnavailable(APIException):
 
 class AdminLoginView(TokenObtainPairView):
     serializer_class = AdminTokenObtainPairSerializer
+    throttle_classes = (ScopedRateThrottle,)
+    throttle_scope = "admin_login"
 
 
 class OTPRequestView(APIView):

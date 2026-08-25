@@ -260,6 +260,14 @@ class AdminProductSerializer(serializers.ModelSerializer):
         product_type = attrs.get(
             "product_type", getattr(self.instance, "product_type", Product.Type.LAPTOP)
         )
+        if (
+            self.instance is not None
+            and "product_type" in attrs
+            and product_type != self.instance.product_type
+        ):
+            raise serializers.ValidationError(
+                {"product_type": "Product type cannot be changed after creation."}
+            )
         laptop_specification = attrs.get("laptop_specification")
         mobile_specification = attrs.get("mobile_specification")
         if self.instance is None and product_type == Product.Type.LAPTOP:

@@ -121,13 +121,14 @@ def test_admin_can_move_paid_order_through_fulfilment(
     )
     shipped = admin_client.patch(
         f"/api/v1/orders/admin/{paid_order.number}/status/",
-        {"status": "shipped"},
+        {"status": "shipped", "carrier": "Post", "tracking_number": "TRACK-001"},
     )
 
     assert processing.status_code == 200
     assert processing.data["status"] == Order.Status.PROCESSING
     assert shipped.status_code == 200
     assert shipped.data["status"] == Order.Status.SHIPPED
+    assert shipped.data["tracking_number"] == "TRACK-001"
     assert (
         OrderStatusEvent.objects.get(
             order=paid_order, to_status=Order.Status.PROCESSING
