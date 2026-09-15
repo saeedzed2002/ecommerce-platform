@@ -184,3 +184,7 @@ GitHub Actions runs on pull requests and pushes to `main`:
 The project uses Semantic Versioning (`MAJOR.MINOR.PATCH`) for releases and URL-based versioning for public APIs. The current development release is `v0.1.0`, while the catalog API is `/api/v1/`.
 
 Read the complete policy in [versioning.md](docs/versioning.md).
+
+## License
+
+This repository is licensed under the [MIT License](LICENSE).
