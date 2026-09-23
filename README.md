@@ -1,6 +1,6 @@
 # Ecommerce Platform
 
-A production-oriented e-commerce platform built as a monorepo. It currently provides a Django catalog API, OTP-based authentication, a React storefront, product administration, PostgreSQL persistence, and MinIO-backed product image uploads.
+A pre-release e-commerce platform built as a monorepo. It currently provides a Django catalog API, OTP-based authentication, a React storefront, product administration, PostgreSQL persistence, and MinIO-backed product image uploads.
 
 ## Current status
 
